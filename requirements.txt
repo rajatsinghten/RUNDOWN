@@ -1,0 +1,11 @@
+Flask
+flask-cors
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-generativeai
+cryptography
+python-dotenv
+apscheduler
+flask-session

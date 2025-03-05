@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RunDown</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+  <!-- Top Navigation Bar -->
+  <div class="top-nav">
+    <div class="logo">RunDown</div>
+    <nav class="nav-links">
+      <a href="/gmail">Emails</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/logout">Logout</a>
+    </nav>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <button class="panel-trigger left-trigger" id="left-trigger">📋 Tasks</button>
+    <button class="panel-trigger right-trigger" id="right-trigger">💬 Chats</button>
+
+    <div class="main-container">
+      <!-- Left Panel -->
+      <div class="collapsible-panel" id="left-panel">
+        <button class="close-panel-btn">×</button>
+        <div class="suggested-section">
+          <h1>Suggested Tasks</h1>
+          <button id="refresh-sug">🔄 Refresh</button>
+          <ul id="suggestedList"></ul>
+        </div>
+      </div>
+
+      <!-- Main Todo Section -->
+      <div class="todo-section">
+        <h1>UPCOMING TASKS</h1>
+        <div class="task-list-container">
+          <ul id="taskList"></ul>
+        </div>
+        <div class="input-container">
+          <input type="text" id="taskInput" placeholder="Add a new task...">
+          <input type="datetime-local" id="taskDeadline">
+          <button id="addTaskBtn">➕ Add</button>
+        </div>
+      </div>
+
+      <!-- Right Panel -->
+      <div class="collapsible-panel" id="right-panel">
+        <button class="close-panel-btn">×</button>
+        <div class="chat-section">
+          <h1>🤖 AI Assistant</h1>
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-message">How can I help you today?</div>
+          </div>
+          <div class="input-container">
+            <input type="text" id="user-input" placeholder="Type your message...">
+            <button id="send-button">🚀 Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/chat.js"></script>
+</body>
+</html>
+

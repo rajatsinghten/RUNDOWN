@@ -1,0 +1,21 @@
+# Ignore system files
+.DS_Store
+.env
+secret.key
+tokens
+credentials.json
+
+# Ignore Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environment
+venv/
+
+# Ignore log files
+*.log
+
+# Ignore Flask session data
+flask_session/
