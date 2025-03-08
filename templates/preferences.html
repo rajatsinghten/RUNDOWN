@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RunDown - Preferences</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <style>
+    .preferences-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 30px;
+      background-color: white;
+      border-radius: 15px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    }
+    
+    .preferences-title {
+      margin-bottom: 25px;
+      color: #333;
+      font-weight: 600;
+    }
+    
+    .preferences-section {
+      margin-bottom: 30px;
+    }
+    
+    .checkboxes {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+    }
+    
+    .checkbox-item input[type="checkbox"] {
+      margin-right: 10px;
+      height: 18px;
+      width: 18px;
+    }
+    
+    .btn-save {
+      background-color: #4F46E5;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .btn-save:hover {
+      background-color: #4338CA;
+    }
+    
+    .success-message {
+      color: #10b981;
+      margin-top: 10px;
+      display: none;
+    }
+    
+    .custom-interests {
+      margin-top: 25px;
+    }
+    
+    .custom-interests-list {
+      margin-top: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .custom-interest-tag {
+      display: flex;
+      align-items: center;
+      background-color: #e0e7ff;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+    }
+    
+    .custom-interest-tag button {
+      background: none;
+      border: none;
+      color: #4338ca;
+      margin-left: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    .custom-interest-input {
+      display: flex;
+      margin-top: 15px;
+      gap: 10px;
+    }
+    
+    .custom-interest-input input {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+    }
+    
+    .add-custom-btn {
+      background-color: #818cf8;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0 15px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .add-custom-btn:hover {
+      background-color: #6366f1;
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Navigation Bar -->
+  <div class="top-nav">
+    <div class="logo">RunDown</div>
+    <nav class="nav-links">
+      <a href="/">Dashboard</a>
+      <a href="/gmail">Emails</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/logout">Logout</a>
+    </nav>
+  </div>
+
+  <!-- Main Content -->
+  <div class="preferences-container">
+    <h1 class="preferences-title">Your Preferences</h1>
+    
+    <div class="preferences-section">
+      <h2>Interest Categories</h2>
+      <p>Select the categories you're interested in. We'll use these to filter email suggestions and make your experience more relevant.</p>
+      
+      <div class="checkboxes" id="interests-container">
+        {% for category in categories %}
+        <div class="checkbox-item">
+          <input type="checkbox" id="category-{{ loop.index }}" name="interests" value="{{ category }}" 
+                 {% if category in user_preferences.interests %}checked{% endif %}>
+          <label for="category-{{ loop.index }}">{{ category }}</label>
+        </div>
+        {% endfor %}
+      </div>
+      
+      <div class="custom-interests">
+        <h3>Custom Interests</h3>
+        <p>Add your own custom interest categories that aren't listed above.</p>
+        
+        <div class="custom-interests-list" id="custom-interests-list">
+          {% if user_preferences.custom_interests %}
+            {% for custom_interest in user_preferences.custom_interests %}
+              <div class="custom-interest-tag">
+                {{ custom_interest }}
+                <button type="button" class="remove-custom" data-interest="{{ custom_interest }}">×</button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+        
+        <div class="custom-interest-input">
+          <input type="text" id="custom-interest-input" placeholder="Enter a custom interest...">
+          <button type="button" id="add-custom-btn" class="add-custom-btn">Add</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="preferences-section">
+      <h2>Email Filtering</h2>
+      <div class="checkbox-item">
+        <input type="checkbox" id="enable-filtering" name="enable-filtering" 
+               {% if user_preferences.enabled %}checked{% endif %}>
+        <label for="enable-filtering">Enable smart email filtering</label>
+      </div>
+      <p class="hint">When enabled, we'll only suggest tasks from emails that match your interests.</p>
+    </div>
+    
+    <button id="save-preferences" class="btn-save">Save Preferences</button>
+    <div id="success-message" class="success-message">Preferences saved successfully!</div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const saveButton = document.getElementById('save-preferences');
+      const successMessage = document.getElementById('success-message');
+      const customInput = document.getElementById('custom-interest-input');
+      const addCustomBtn = document.getElementById('add-custom-btn');
+      const customList = document.getElementById('custom-interests-list');
+      
+      // Initial set of custom interests (from server)
+      let customInterests = [];
+      {% if user_preferences.custom_interests %}
+        customInterests = {{ user_preferences.custom_interests|tojson }};
+      {% endif %}
+      
+      // Add a custom interest
+      function addCustomInterest(interest) {
+        if (!interest || customInterests.includes(interest)) return;
+        
+        customInterests.push(interest);
+        
+        const tag = document.createElement('div');
+        tag.className = 'custom-interest-tag';
+        tag.innerHTML = `
+          ${interest}
+          <button type="button" class="remove-custom" data-interest="${interest}">×</button>
+        `;
+        customList.appendChild(tag);
+        
+        // Clear input
+        customInput.value = '';
+      }
+      
+      // Handle add button click
+      addCustomBtn.addEventListener('click', () => {
+        const interest = customInput.value.trim();
+        addCustomInterest(interest);
+      });
+      
+      // Handle Enter key in input
+      customInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const interest = customInput.value.trim();
+          addCustomInterest(interest);
+        }
+      });
+      
+      // Handle remove buttons (using event delegation)
+      customList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-custom')) {
+          const interest = e.target.dataset.interest;
+          customInterests = customInterests.filter(i => i !== interest);
+          e.target.parentElement.remove();
+        }
+      });
+      
+      saveButton.addEventListener('click', async () => {
+        // Collect all selected interests
+        const interestCheckboxes = document.querySelectorAll('input[name="interests"]:checked');
+        const interests = Array.from(interestCheckboxes).map(cb => cb.value);
+        
+        // Get filtering enabled status
+        const filteringEnabled = document.getElementById('enable-filtering').checked;
+        
+        // Send to server
+        try {
+          const response = await fetch('/api/preferences', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              interests: interests,
+              custom_interests: customInterests,
+              enabled: filteringEnabled
+            }),
+            credentials: 'include'
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to save preferences');
+          }
+          
+          // Show success message
+          successMessage.style.display = 'block';
+          setTimeout(() => {
+            successMessage.style.display = 'none';
+          }, 3000);
+          
+        } catch (error) {
+          console.error('Error saving preferences:', error);
+          alert('Failed to save preferences. Please try again.');
+        }
+      });
+    });
+  </script>
+</body>
+</html> 
