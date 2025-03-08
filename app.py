@@ -142,14 +142,120 @@ def process_emails():
                         ).execute()
                         continue
                 
-                # Process timestamp
-                internal_date = int(message.get('internalDate', 0))
-                from datetime import datetime
-                dt = datetime.utcfromtimestamp(internal_date / 1000)
-                iso_date = dt.isoformat() + 'Z'
+                # Use AI to extract the actual event date from the email content
+                import google.generativeai as genai
                 
-                # Create calendar event for matching emails
-                create_calendar_event(creds, subject, sender, date_str, iso_date)
+                prompt = f"""
+                Email Subject: {subject}
+                Email Content: {email_body}
+                
+                Extract the following information from this email:
+                1. The SPECIFIC date and time of the event mentioned (EXACT DATE AND TIME, not relative dates)
+                2. The location of the event (if mentioned)
+                3. A brief description of what this event is about
+                
+                Format your response as JSON:
+                {{
+                    "event_date": "YYYY-MM-DD HH:MM" or "none" if not found,
+                    "location": "location string or 'none' if not found",
+                    "description": "brief description of the event"
+                }}
+                
+                IMPORTANT: For the event_date, you must provide the EXACT date and time in YYYY-MM-DD HH:MM format.
+                Do not use "tomorrow", "next week", or any other relative dates. Convert them to actual calendar dates.
+                """
+                
+                try:
+                    # Configure the AI model if not already done
+                    if not genai.get_default_api_key():
+                        genai.configure(api_key=GOOGLE_API_KEY)
+                    
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    response = model.generate_content(prompt)
+                    
+                    if response and response.text:
+                        # Extract the JSON response
+                        import json
+                        import re
+                        
+                        response_text = response.text.strip()
+                        # Extract JSON if it's wrapped in code blocks
+                        if "```json" in response_text:
+                            json_str = response_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in response_text:
+                            json_str = response_text.split("```")[1].strip()
+                        else:
+                            json_str = response_text
+                            
+                        # Parse the extracted JSON
+                        extracted_data = json.loads(json_str)
+                        
+                        # Get the event date from the extraction or use email date as fallback
+                        event_date = extracted_data.get('event_date', 'none')
+                        location = extracted_data.get('location', 'none')
+                        event_description = extracted_data.get('description', '')
+                        
+                        if event_date and event_date.lower() != 'none':
+                            # Parse the event date
+                            from datetime import datetime
+                            try:
+                                # Try with standard format first
+                                event_dt = datetime.strptime(event_date, "%Y-%m-%d %H:%M")
+                                print(f"Successfully parsed event date using standard format: {event_date}")
+                            except Exception as date_error:
+                                try:
+                                    # Try with dateutil parser which is more flexible
+                                    from dateutil import parser
+                                    event_dt = parser.parse(event_date)
+                                    print(f"Successfully parsed event date using dateutil: {event_date} -> {event_dt}")
+                                except Exception as parser_error:
+                                    print(f"Error parsing event date with both methods: {date_error} and {parser_error}")
+                                    # Fallback to email date
+                                    internal_date = int(message.get('internalDate', 0))
+                                    event_dt = datetime.utcfromtimestamp(internal_date / 1000)
+                                    print(f"Using fallback email timestamp: {event_dt}")
+                                
+                            # Create ISO format date - without the Z suffix to avoid UTC designation
+                            iso_date = event_dt.isoformat()
+                            print(f"Extracted event date: {event_date} -> ISO format: {iso_date}")
+                        else:
+                            # Use email date if no event date found
+                            print(f"No event date found in: {subject}, using email date")
+                            internal_date = int(message.get('internalDate', 0))
+                            event_dt = datetime.utcfromtimestamp(internal_date / 1000)
+                            iso_date = event_dt.isoformat()
+                        
+                        # Enhanced event description with location
+                        full_description = f"From: {sender}\nDate: {date_str}\nSubject: {subject}"
+                        if event_description:
+                            full_description += f"\n\nDetails: {event_description}"
+                        if location and location.lower() != 'none':
+                            full_description += f"\n\nLocation: {location}"
+                            
+                        # Create calendar event with the extracted date and enhanced description
+                        create_calendar_event(
+                            creds, 
+                            subject, 
+                            sender, 
+                            date_str, 
+                            iso_date, 
+                            description=full_description,
+                            set_reminder=True
+                        )
+                    else:
+                        # Fallback to email date if AI extraction fails
+                        internal_date = int(message.get('internalDate', 0))
+                        event_dt = datetime.utcfromtimestamp(internal_date / 1000)
+                        iso_date = event_dt.isoformat()
+                        create_calendar_event(creds, subject, sender, date_str, iso_date)
+                        
+                except Exception as ai_error:
+                    print(f"Error using AI to extract date: {ai_error}")
+                    # Fallback to email date
+                    internal_date = int(message.get('internalDate', 0))
+                    event_dt = datetime.utcfromtimestamp(internal_date / 1000)
+                    iso_date = event_dt.isoformat()
+                    create_calendar_event(creds, subject, sender, date_str, iso_date)
                 
                 # Mark as processed
                 gmail_service.users().messages().modify(
@@ -159,6 +265,8 @@ def process_emails():
                 ).execute()
         except Exception as e:
             print(f"Error processing emails for {user_id}: {e}")
+            import traceback
+            print(traceback.format_exc())
 
 scheduler.add_job(func=process_emails, trigger='interval', minutes=50)
 

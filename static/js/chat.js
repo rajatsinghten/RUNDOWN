@@ -203,7 +203,7 @@ taskList.addEventListener('change', (e) => {
   }
 });
 
-function addTask(taskValue, deadline = '', eventUrl = null, eventId = null) {
+function addTask(taskValue, deadline, eventUrl = null, eventId = null) {
   if (taskValue === "") return;
   
   const taskElement = createTaskElement(taskValue, deadline, eventUrl, eventId);
@@ -226,14 +226,24 @@ addTaskBtn.addEventListener('click', async () => {
   }
 
   try {
+    // Format deadline for sending to API
+    let formattedDeadline = '';
+    if (deadline) {
+      formattedDeadline = new Date(deadline).toISOString();
+    }
+    
     // Add to calendar via API
     const response = await fetch("/addtask", {
       method: "POST",
       headers: { 
-        "Content-Type": "text/plain",
+        "Content-Type": "application/json",
         'X-Requested-With': 'XMLHttpRequest'
       },
-      body: taskText + (deadline ? ` on ${new Date(deadline).toLocaleString()}` : ''),
+      body: JSON.stringify({
+        task_text: taskText,
+        event_date: formattedDeadline,
+        display_date: deadline ? new Date(deadline).toLocaleString() : ''
+      }),
       credentials: "include"
     });
 
@@ -424,21 +434,46 @@ async function loadCalendarEvents() {
 function addSuggestion(suggestion) {
   if (!suggestion || !suggestion.text) return;
   
+  // Log all suggestion data for debugging
+  console.log("Adding suggestion with data:", JSON.stringify(suggestion));
+  
   const urgencyClass = suggestion.is_time_sensitive ? 'urgent-suggestion' : '';
   const emailLink = suggestion.email_id ? 
     `<a href="https://mail.google.com/mail/u/0/#inbox/${suggestion.email_id}" class="email-link" target="_blank">📧 View Email</a>` : '';
+  
+  // Add location if available
+  const locationDisplay = suggestion.location ? 
+    `<p class="location">📍 ${suggestion.location}</p>` : '';
   
   const div = document.createElement('div');
   div.innerHTML = `
       <div class="suggested-item ${urgencyClass}">
           <p class="text">${suggestion.text}</p>
           ${suggestion.deadline ? `<p class="deadline">📅 ${suggestion.deadline}</p>` : ''}
+          ${locationDisplay}
           ${emailLink}
           <div class="suggestion-actions">
             <button class="btn add-btn">Add to Task List</button>
             <button class="btn delete-btn">Dismiss</button>
           </div>
       </div>`;
+  
+  // Store original event_date as a data attribute if available
+  const suggestedItem = div.querySelector('.suggested-item');
+  
+  // Check both event_date fields to cover all bases
+  const eventDate = suggestion.event_date || '';
+  if (eventDate) {
+    suggestedItem.dataset.eventDate = eventDate;
+    console.log(`Stored original event_date in suggestion DOM: ${eventDate}`);
+  }
+  
+  // Also store the raw deadline date if available
+  if (suggestion.deadline) {
+    suggestedItem.dataset.deadline = suggestion.deadline;
+    console.log(`Stored deadline in suggestion DOM: ${suggestion.deadline}`);
+  }
+  
   suggestionBox.appendChild(div);
 }
 
@@ -527,6 +562,12 @@ function addStyles() {
     .suggested-item .deadline {
       font-size: 0.85rem;
       color: #6b7280;
+      margin: 5px 0;
+    }
+    
+    .suggested-item .location {
+      font-size: 0.85rem;
+      color: #4b5563;
       margin: 5px 0;
     }
     
@@ -641,6 +682,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           const deadlineEl = suggestionItem.querySelector('.deadline');
           const deadline = deadlineEl ? deadlineEl.textContent.replace('📅 ', '') : '';
           
+          // Get all possible date information from the suggestion item
+          const eventDate = suggestionItem.dataset.eventDate || '';
+          const deadlineData = suggestionItem.dataset.deadline || deadline;
+          
+          console.log("Adding suggestion to tasks with date info:", {
+            text,
+            eventDate,
+            deadline: deadlineData
+          });
+          
           // Check if this task already exists
           if (isDuplicateTask(text)) {
             showNotification('This task already exists in your list!', 'error');
@@ -649,14 +700,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           
           try {
-              // Add to calendar via API
+              // Add to calendar via API with all possible date information
               const response = await fetch("/addtask", {
                 method: "POST",
                 headers: { 
-                  "Content-Type": "text/plain",
+                  "Content-Type": "application/json",
                   'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: text + (deadline ? ` on ${deadline}` : ''),
+                body: JSON.stringify({
+                  task_text: text,
+                  event_date: eventDate,        // Original date string from AI extraction
+                  raw_deadline: deadlineData,   // Raw deadline string
+                  display_date: deadline,       // Formatted display date
+                  debug_info: {                 // Extra debug info
+                    has_event_date: !!eventDate,
+                    has_deadline: !!deadline,
+                    dom_attributes: Object.keys(suggestionItem.dataset)
+                  }
+                }),
                 credentials: "include"
               });
 

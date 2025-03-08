@@ -10,3 +10,5 @@ python-dotenv
 apscheduler
 flask-session
 python-dateutil
+pytz
+tzlocal
