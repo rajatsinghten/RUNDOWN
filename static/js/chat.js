@@ -95,20 +95,33 @@ const addTaskBtn = document.getElementById('addTaskBtn');
 const taskList = document.getElementById('taskList');
 const suggestionBox = document.getElementById('suggestedList');
 
-const createTaskElement = (taskText, deadline, eventUrl = null, eventId = null) => {
-  const li = document.createElement('li');
-  li.className = 'task-item';
+function addTask(taskValue, deadline, eventUrl = null, eventId = null, emailId = null) {
+  console.log(`Adding task to todo list: "${taskValue}", deadline: ${deadline}, eventUrl: ${eventUrl}, eventId: ${eventId}, emailId: ${emailId}`);
   
-  // Store event ID as data attribute if provided
-  if (eventId) {
-    li.dataset.eventId = eventId;
+  // Check if this task already exists by ID or text
+  if (isDuplicateTask(taskValue, eventId, emailId)) {
+    console.log(`Task "${taskValue}" appears to be a duplicate, not adding`);
+    showNotification("This task already exists in your list", "info");
+    return false;
   }
   
-  li.innerHTML = `
+  const taskItem = document.createElement("li");
+  taskItem.className = "task-item";
+  
+  // Store event ID and email ID as data attributes if available
+  if (eventId) {
+    taskItem.dataset.eventId = eventId;
+  }
+  
+  if (emailId) {
+    taskItem.dataset.emailId = emailId;
+  }
+  
+  taskItem.innerHTML = `
       <div class="task-content">
           <div class="status-indicator status-not-started"></div>
           <div>
-              <span class="task-text">${taskText}</span>
+              <span class="task-text">${taskValue}</span>
               ${deadline ? `<div class="task-deadline">📅 ${deadline}</div>` : ''}
               ${eventUrl ? `<a href="${eventUrl}" target="_blank" class="event-link">🔗 Calendar Event</a>` : ''}
           </div>
@@ -122,97 +135,30 @@ const createTaskElement = (taskText, deadline, eventUrl = null, eventId = null) 
           <button class="delete-btn">🗑️</button>
       </div>
   `;
-  return li;
-};
-
-// Event Delegation for Tasks
-taskList.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('delete-btn')) {
-      const taskItem = e.target.closest('.task-item');
-      const eventId = taskItem.dataset.eventId;
-      
-      // If there's an event ID, delete from calendar
-      if (eventId) {
-        try {
-          const deleteButton = e.target;
-          // Change the button to indicate deletion in progress
-          deleteButton.textContent = '⏳';
-          deleteButton.disabled = true;
-          
-          console.log(`Deleting calendar event with ID: ${eventId}`);
-          const response = await fetch('/calendar/delete', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ event_id: eventId }),
-            credentials: 'include'
-          });
-          
-          // Handle the response with our utility function
-          try {
-            const responseData = await handleApiResponse(response);
-            console.log('Response from deletion API:', responseData);
-            
-            // Success - show feedback before removing
-            deleteButton.textContent = '✅';
-            showNotification('Event deleted successfully from calendar!', 'success');
-            
-            // Store deleted event IDs to prevent re-suggesting
-            const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
-            if (!deletedEventIds.includes(eventId)) {
-              deletedEventIds.push(eventId);
-              localStorage.setItem('deletedEventIds', JSON.stringify(deletedEventIds));
-            }
-            
-            setTimeout(() => {
-              taskItem.remove();
-            }, 500);
-          } catch (error) {
-            if (error.message === 'Authentication required') {
-              // This will be handled by handleApiResponse
-              return;
-            }
-            
-            console.error('Failed to delete calendar event:', error.message);
-            showNotification(`Failed to delete calendar event: ${error.message}`, 'error');
-            // Show error but still remove from UI
-            deleteButton.textContent = '❌';
-            setTimeout(() => {
-              taskItem.remove();
-            }, 1000);
-          }
-        } catch (error) {
-          console.error('Error deleting calendar event:', error);
-          showNotification(`Error deleting event: ${error.message}`, 'error');
-          taskItem.remove(); // Still remove from UI even if API fails
-        }
-      } else {
-        // No calendar event associated, just remove from UI
-        taskItem.remove();
-      }
-  }
-});
-
-taskList.addEventListener('change', (e) => {
-  if (e.target.classList.contains('status-select')) {
-      const status = e.target.value;
-      const indicator = e.target.closest('.task-item').querySelector('.status-indicator');
-      indicator.className = `status-indicator status-${status.replace(' ', '-')}`;
-  }
-});
-
-function addTask(taskValue, deadline, eventUrl = null, eventId = null) {
-  if (taskValue === "") return;
-  
-  console.log(`Adding task to todo list: "${taskValue}", deadline: ${deadline}, eventUrl: ${eventUrl}, eventId: ${eventId}`);
-  
-  const taskElement = createTaskElement(taskValue, deadline, eventUrl, eventId);
-  taskList.appendChild(taskElement);
+  taskList.appendChild(taskItem);
   
   // Log the current task list for debugging
   console.log(`Task list now has ${taskList.children.length} items`);
+  return true;
+}
+
+function isDuplicateTask(taskText, eventId = null, emailId = null) {
+  // First check existing event IDs if provided
+  if (eventId) {
+    const existingItem = document.querySelector(`.task-item[data-event-id="${eventId}"]`);
+    if (existingItem) return true;
+  }
+  
+  // Then check email IDs if provided
+  if (emailId) {
+    const existingItem = document.querySelector(`.task-item[data-email-id="${emailId}"]`);
+    if (existingItem) return true;
+  }
+  
+  // Finally check by task text
+  const existingTaskTexts = Array.from(taskList.querySelectorAll('.task-text'))
+    .map(el => el.textContent.toLowerCase().trim());
+  return existingTaskTexts.includes(taskText.toLowerCase().trim());
 }
 
 addTaskBtn.addEventListener('click', async () => {
@@ -273,7 +219,7 @@ addTaskBtn.addEventListener('click', async () => {
       
       // Add to UI with formatted deadline
       const displayDeadline = data.deadline || (deadline ? new Date(deadline).toLocaleString() : '');
-      addTask(data.response || taskText, displayDeadline, data.event, eventId);
+      addTask(data.response || taskText, displayDeadline, data.event, eventId, data.email_id);
       
       showNotification('Task added successfully!', 'success');
       
@@ -425,12 +371,17 @@ async function sendMessage() {
           }
           
           // Add to todo list UI
-          addTask(
+          const addedTask = addTask(
             data.event_data.title, 
             data.event_data.datetime, 
             data.event_data.link, 
-            eventId
+            eventId,
+            data.event_data.email_id
           );
+          
+          if (addedTask) {
+            showNotification(`Added "${data.event_data.title}" to your task list`, "success");
+          }
           
           // Add to current event IDs for tracking
           if (eventId) {
@@ -441,8 +392,14 @@ async function sendMessage() {
             }
           }
           
-          // Show success notification
-          showNotification('Task added to your todo list!', 'success');
+          // Add email ID to the list of processed emails
+          if (data.event_data.email_id) {
+            const processedEmailIds = JSON.parse(localStorage.getItem('processedEmailIds') || '[]');
+            if (!processedEmailIds.includes(data.event_data.email_id)) {
+              processedEmailIds.push(data.event_data.email_id);
+              localStorage.setItem('processedEmailIds', JSON.stringify(processedEmailIds));
+            }
+          }
         }
       }
       
@@ -489,13 +446,6 @@ function extractEventIdFromUrl(url) {
   return null;
 }
 
-// Helper function to check if an item already exists in the to-do list
-function isDuplicateTask(taskText) {
-  const existingTasks = Array.from(taskList.querySelectorAll('.task-text'))
-    .map(el => el.textContent.toLowerCase().trim());
-  return existingTasks.includes(taskText.toLowerCase().trim());
-}
-
 // Load calendar events as tasks
 async function loadCalendarEvents() {
   try {
@@ -527,7 +477,7 @@ async function loadCalendarEvents() {
             eventIds.push(event.id);
           }
           
-          addTask(title, start, event.htmlLink, event.id);
+          addTask(title, start, event.htmlLink, event.id, event.email_id);
         });
         
         // Store the event IDs in localStorage for comparison with suggestions
@@ -594,66 +544,96 @@ function addSuggestion(suggestion) {
 }
 
 async function getSuggestions() {
+  // First, check if the filter dropdown exists, if not, create it
+  let filterContainer = document.querySelector('.filter-container');
+  
+  if (!filterContainer) {
+    filterContainer = document.createElement('div');
+    filterContainer.className = 'filter-container';
+    filterContainer.innerHTML = `
+      <label for="time-period-filter">Show emails from:</label>
+      <select id="time-period-filter" class="filter-dropdown">
+        <option value="1">Last 24 hours</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="15">Last 15 days</option>
+        <option value="30">Last 30 days</option>
+      </select>
+    `;
+    suggestionBox.parentNode.insertBefore(filterContainer, suggestionBox);
+    
+    // Add event listener to reload suggestions when the filter changes
+    document.getElementById('time-period-filter').addEventListener('change', getSuggestions);
+  }
+  
+  // Get the selected time period
+  const timePeriod = document.getElementById('time-period-filter').value;
+  
   suggestionBox.innerHTML = '<div class="loading">Loading suggestions...</div>';
   try {
-      const response = await fetch("/addsuggestion", {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          credentials: "include"
-      });
+    const response = await fetch("/addsuggestion", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ time_period: timePeriod }),
+      credentials: "include"
+    });
 
-      try {
-        const data = await handleApiResponse(response);
+    try {
+      const data = await handleApiResponse(response);
+      
+      // Clear the suggestions
+      suggestionBox.innerHTML = '';
+      
+      if (data.suggestions?.length) {
+        // Get currently displayed tasks and deleted events
+        const currentEventIds = JSON.parse(localStorage.getItem('currentEventIds') || '[]');
+        const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
+        const existingTaskTexts = Array.from(taskList.querySelectorAll('.task-text'))
+          .map(el => el.textContent.toLowerCase().trim());
         
-        // Clear the suggestions
-        suggestionBox.innerHTML = '';
+        // Filter suggestions to avoid duplicates
+        const filteredSuggestions = data.suggestions.filter(suggestion => {
+          // Skip suggestions that are already in the task list by title
+          const suggestionText = suggestion.text.toLowerCase().trim();
+          if (existingTaskTexts.includes(suggestionText)) {
+            console.log(`Skipping suggestion already in task list: ${suggestion.text}`);
+            return false;
+          }
+          
+          // Skip suggestions for emails that are already processed
+          const processedEmailIds = JSON.parse(localStorage.getItem('processedEmailIds') || '[]');
+          if (suggestion.email_id && (
+            deletedEventIds.includes(suggestion.email_id) || 
+            processedEmailIds.includes(suggestion.email_id) || 
+            document.querySelector(`.task-item[data-email-id="${suggestion.email_id}"]`)
+          )) {
+            console.log(`Skipping suggestion from processed email: ${suggestion.email_id}`);
+            return false;
+          }
+          
+          return true;
+        });
         
-        if (data.suggestions?.length) {
-            // Get currently displayed tasks and deleted events
-            const currentEventIds = JSON.parse(localStorage.getItem('currentEventIds') || '[]');
-            const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
-            const existingTaskTexts = Array.from(taskList.querySelectorAll('.task-text'))
-              .map(el => el.textContent.toLowerCase().trim());
-            
-            // Filter suggestions to avoid duplicates
-            const filteredSuggestions = data.suggestions.filter(suggestion => {
-              // Skip suggestions that are already in the task list by title
-              const suggestionText = suggestion.text.toLowerCase().trim();
-              if (existingTaskTexts.includes(suggestionText)) {
-                console.log(`Skipping suggestion already in task list: ${suggestion.text}`);
-                return false;
-              }
-              
-              // Skip suggestions for emails that are already processed
-              if (suggestion.email_id && deletedEventIds.includes(suggestion.email_id)) {
-                console.log(`Skipping suggestion from deleted email: ${suggestion.email_id}`);
-                return false;
-              }
-              
-              return true;
-            });
-            
-            if (filteredSuggestions.length > 0) {
-              filteredSuggestions.forEach(addSuggestion);
-            } else {
-              suggestionBox.innerHTML = '<div class="no-suggestions">No new suggestions found</div>';
-            }
+        if (filteredSuggestions.length > 0) {
+          filteredSuggestions.forEach(addSuggestion);
         } else {
-            suggestionBox.innerHTML = '<div class="no-suggestions">No suggestions found based on your interests</div>';
+          suggestionBox.innerHTML = '<div class="no-suggestions">No new suggestions found</div>';
         }
-      } catch (error) {
-        if (error.message === 'Authentication required') {
-          // This will be handled by handleApiResponse
-          return;
-        }
-        throw error;
+      } else {
+        suggestionBox.innerHTML = '<div class="no-suggestions">No suggestions found based on your interests</div>';
       }
+    } catch (error) {
+      if (error.message === 'Authentication required') {
+        // This will be handled by handleApiResponse
+        return;
+      }
+      throw error;
+    }
   } catch (error) {
-      console.error("Error:", error);
-      suggestionBox.innerHTML = `<div class="error">Failed to load suggestions: ${error.message}</div>`;
+    console.error("Error:", error);
+    suggestionBox.innerHTML = `<div class="error">Failed to load suggestions: ${error.message}</div>`;
   }
 }
 
@@ -815,6 +795,26 @@ function addStyles() {
     #suggestedList::-webkit-scrollbar-thumb:hover,
     #chat-messages::-webkit-scrollbar-thumb:hover {
       background: rgba(0,0,0,0.25);
+    }
+
+    /* Add styles for time period filter dropdown */
+    .filter-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding: 0 10px;
+    }
+    .filter-container label {
+      margin-right: 8px;
+      font-weight: bold;
+    }
+    .filter-dropdown {
+      padding: 5px 10px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      font-size: 14px;
     }
   `;
   document.head.appendChild(style);
@@ -1146,3 +1146,91 @@ function showInputError(message) {
       taskInput.placeholder = 'Add a new task...';
   }, 2000);
 }
+
+// Event Delegation for Tasks
+taskList.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('delete-btn')) {
+    const taskItem = e.target.closest('.task-item');
+    const eventId = taskItem.dataset.eventId;
+    
+    // If there's an event ID, delete from calendar
+    if (eventId) {
+      try {
+        const deleteButton = e.target;
+        // Change the button to indicate deletion in progress
+        deleteButton.textContent = '⏳';
+        deleteButton.disabled = true;
+        
+        console.log(`Deleting calendar event with ID: ${eventId}`);
+        const response = await fetch('/calendar/delete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ event_id: eventId }),
+          credentials: 'include'
+        });
+        
+        // Handle the response with our utility function
+        try {
+          const responseData = await handleApiResponse(response);
+          console.log('Response from deletion API:', responseData);
+          
+          // Success - show feedback before removing
+          deleteButton.textContent = '✅';
+          showNotification('Event deleted successfully from calendar!', 'success');
+          
+          // Store deleted event IDs to prevent re-suggesting
+          const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
+          if (!deletedEventIds.includes(eventId)) {
+            deletedEventIds.push(eventId);
+            localStorage.setItem('deletedEventIds', JSON.stringify(deletedEventIds));
+          }
+          
+          // Also store the email ID to prevent re-suggesting
+          const emailId = taskItem.dataset.emailId;
+          if (emailId) {
+            const processedEmailIds = JSON.parse(localStorage.getItem('processedEmailIds') || '[]');
+            if (!processedEmailIds.includes(emailId)) {
+              processedEmailIds.push(emailId);
+              localStorage.setItem('processedEmailIds', JSON.stringify(processedEmailIds));
+            }
+          }
+          
+          setTimeout(() => {
+            taskItem.remove();
+          }, 500);
+        } catch (error) {
+          if (error.message === 'Authentication required') {
+            // This will be handled by handleApiResponse
+            return;
+          }
+          
+          console.error('Failed to delete calendar event:', error.message);
+          showNotification(`Failed to delete calendar event: ${error.message}`, 'error');
+          // Show error but still remove from UI
+          deleteButton.textContent = '❌';
+          setTimeout(() => {
+            taskItem.remove();
+          }, 1000);
+        }
+      } catch (error) {
+        console.error('Error deleting calendar event:', error);
+        showNotification(`Error deleting event: ${error.message}`, 'error');
+        taskItem.remove(); // Still remove from UI even if API fails
+      }
+    } else {
+      // No calendar event associated, just remove from UI
+      taskItem.remove();
+    }
+  }
+});
+
+taskList.addEventListener('change', (e) => {
+  if (e.target.classList.contains('status-select')) {
+    const status = e.target.value;
+    const indicator = e.target.closest('.task-item').querySelector('.status-indicator');
+    indicator.className = `status-indicator status-${status}`;
+  }
+});

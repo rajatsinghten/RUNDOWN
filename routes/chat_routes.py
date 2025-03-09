@@ -9,6 +9,7 @@ from utils.models import UserPreferences
 import json
 from datetime import datetime, timedelta
 import traceback
+import re
 
 chat_bp = Blueprint('chat', __name__)
 
@@ -203,12 +204,25 @@ def add_event_command(command_content, creds):
             event_dt = event_dt.replace(hour=9, minute=0, second=0, microsecond=0)
             current_app.logger.info(f"Using default date: {event_dt}")
         
+        # Check for email ID in the command
+        email_id = None
+        if 'https://mail.google.com/mail/' in command_content:
+            # Extract email ID from the URL
+            try:
+                email_match = re.search(r'mail/u/\d+/#inbox/([a-zA-Z0-9]+)', command_content)
+                if email_match:
+                    email_id = email_match.group(1)
+            except Exception as e:
+                current_app.logger.error(f"Error extracting email ID: {str(e)}")
+        
         # Create description
         description = f"Created via RunDown Chatbot\n\n"
         if details:
             description += f"Details: {details}\n\n"
         if location:
-            description += f"Location: {location}"
+            description += f"Location: {location}\n\n"
+        if email_id:
+            description += f"Email ID: {email_id}\n\n"
             
         # Create calendar event
         iso_date = event_dt.isoformat()
@@ -241,7 +255,8 @@ def add_event_command(command_content, creds):
                 "link": event.get("htmlLink"),
                 "location": location if location else None,
                 "details": details if details else None,
-                "raw_date": date_str
+                "raw_date": date_str,
+                "email_id": email_id
             }
         })
     except Exception as e:
@@ -425,18 +440,31 @@ You can also ask me questions about your tasks, calendar, or email!
 def add_suggestion():
     user_id = session.get('user_id')
     try:
+        data = request.get_json() or {}
+        # Get the time period from the request (default to 7 days)
+        time_period = int(data.get('time_period', 7))
+        
         creds = load_credentials(user_id)
-        emails = fetch_emails(user_id)
+        # Pass the time period to fetch_emails
+        emails = fetch_emails(user_id, days=time_period)
         
         # Fetch existing calendar events to check for duplicates
         calendar_events = fetch_calendar_events(creds)
         existing_event_titles = [event.get('summary', '').lower() for event in calendar_events]
         existing_subjects = {}
+        existing_email_ids = set()
         
         # Build a map of subjects that already have events to avoid duplicates
         for event in calendar_events:
             # Extract subject from event description if available
             description = event.get('description', '')
+            # Extract email ID if it exists in the description
+            if 'Email ID:' in description:
+                email_id_line = [line for line in description.split('\n') if 'Email ID:' in line]
+                if email_id_line:
+                    email_id = email_id_line[0].replace('Email ID:', '').strip()
+                    existing_email_ids.add(email_id)
+            
             if 'Subject:' in description:
                 subject_line = [line for line in description.split('\n') if 'Subject:' in line]
                 if subject_line:

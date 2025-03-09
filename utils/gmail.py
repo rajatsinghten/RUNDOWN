@@ -4,6 +4,7 @@ import base64
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 from utils.auth import get_flow, save_credentials, load_credentials
+from google.auth.transport.requests import Request
 
 
 def ensure_label_exists(service, label_name):
@@ -63,7 +64,17 @@ def decode_base64(encoded_str):
         return "Error decoding content"
 
 
-def fetch_emails(user_id):
+def fetch_emails(user_id, days=7):
+    """
+    Fetch emails from Gmail inbox
+    
+    Args:
+        user_id: The user ID to fetch emails for
+        days: Number of days to look back for emails (default: 7)
+    
+    Returns:
+        List of email objects with id, subject, content, and date
+    """
     creds = load_credentials(user_id)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -74,11 +85,22 @@ def fetch_emails(user_id):
 
     try:
         service = build('gmail', 'v1', credentials=creds)
+        
+        # Calculate the date range based on the days parameter
+        from datetime import datetime, timedelta
+        date_from = (datetime.now() - timedelta(days=days)).strftime('%Y/%m/%d')
+        
+        # Create query to get emails from the specified time period
+        query = f'after:{date_from}'
+        
         messages = service.users().messages().list(
             userId='me',
-            maxResults=5,
-            labelIds=['INBOX']
+            maxResults=10,  # Increased to get more emails for filtering
+            labelIds=['INBOX'],
+            q=query
         ).execute().get('messages', [])
+        
         return [get_email_details(service, msg['id']) for msg in messages]
     except Exception as e:
+        print(f"Error fetching emails: {str(e)}")
         return {'error': str(e)}
