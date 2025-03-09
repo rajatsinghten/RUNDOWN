@@ -9,12 +9,14 @@ RunDown is an AI-powered task management system that seamlessly integrates with 
 - **Smart Email Processing**: Automatically scans your Gmail for potential tasks and events
 - **AI-Powered Task Extraction**: Uses Google's Generative AI to identify actionable items in emails
 - **Interest-Based Filtering**: Customizable preferences to only show task suggestions relevant to your interests
+- **Time Period Filtering**: Filter suggested tasks based on email time periods (last 24 hours, 7 days, 15 days, or 30 days)
 - **Two-Way Calendar Sync**: Tasks added to your to-do list are automatically synced with Google Calendar (and vice versa)
 - **Smart Date Detection**: Accurately extracts event dates mentioned in emails
 - **Intelligent Reminders**: Sets appropriate reminders for upcoming events (24h before and 30min before)
 - **Natural Language Task Entry**: Add tasks using natural language with automatic date extraction
 - **User Preferences**: Customize your experience with personalized interest categories
 - **Secure Authentication**: OAuth integration with Google for secure access to your data
+- **Intelligent Chatbot**: AI-powered chatbot that understands commands to add and remove events
 
 ## 🛠️ Technology Stack
 
@@ -174,17 +176,23 @@ RunDown/
 ### Managing Tasks
 
 1. **View Suggested Tasks**: Click the "Tasks" button to see AI-generated task suggestions
-2. **Add Suggested Task**: Click "Add to Task List" on any suggestion
-3. **Create Manual Task**: Type a task in the input field and click "Add"
-4. **Set Task Deadline**: Use the date picker to set a deadline for manual tasks
-5. **Track Task Status**: Change task status using the dropdown (Not Started, In Progress, Completed)
-6. **Delete Tasks**: Click the delete button to remove tasks from both the to-do list and calendar
+2. **Filter Suggestions by Time Period**: Use the dropdown to view emails from the last 24 hours, 7 days, 15 days, or 30 days
+3. **Add Suggested Task**: Click "Add to Task List" on any suggestion
+4. **Create Manual Task**: Type a task in the input field and click "Add"
+5. **Set Task Deadline**: Use the date picker to set a deadline for manual tasks
+6. **Track Task Status**: Change task status using the dropdown (Not Started, In Progress, Completed)
+7. **Delete Tasks**: Click the delete button to remove tasks from both the to-do list and calendar
 
 ### AI Assistant
 
 1. Click the "Chats" button to open the AI assistant
 2. Ask questions about your schedule, tasks, or emails
-3. Receive intelligent responses based on your data
+3. Use command prefixes for specific actions:
+   - **@add**: Create a new event (e.g., "@add Meeting with John tomorrow at 3pm")
+   - **@remove**: Delete an event (e.g., "@remove Project meeting")
+   - **@list**: View upcoming events on your calendar
+   - **@help**: Get information about available commands
+4. Receive intelligent responses based on your data
 
 ## 🔄 API Endpoints
 
@@ -240,6 +248,36 @@ The system scans your inbox for actionable emails and:
 2. Extracts relevant information like dates, times, and locations
 3. Creates task suggestions based on this information
 4. Marks processed emails with a special label to avoid duplication
+
+### Smart Duplicate Prevention
+
+RunDown uses multiple strategies to prevent duplicate tasks:
+
+1. **Email ID Tracking**: Stores email IDs when creating tasks from emails to prevent re-suggesting the same email
+2. **Event ID Comparison**: Checks calendar event IDs to avoid duplicate entries
+3. **Text Matching**: Compares task text to prevent similar tasks from being added multiple times
+4. **Cross-Interface Deduplication**: Tasks added via the chatbot won't appear in suggestions and vice versa
+
+### AI Chatbot Commands
+
+The built-in AI chatbot supports command prefixes for quick task management:
+
+- **@add [event details]**: Creates a new calendar event and adds it to your task list
+  - Extracts dates, times, and locations from your description
+  - Uses natural language processing to understand relative dates (tomorrow, next week, etc.)
+  - Defaults to appropriate times if not specified
+  
+- **@remove [event name]**: Deletes an event from your calendar and task list
+  - Finds the best matching event based on your description
+  - Confirms successful deletion
+
+- **@list**: Shows your upcoming calendar events
+  - Displays events in chronological order
+  - Includes date, time, and location information
+
+- **@help**: Provides information on available commands
+  - Shows detailed usage examples
+  - Offers tips for effective command usage
 
 ## 🔧 Troubleshooting
 
