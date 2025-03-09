@@ -206,8 +206,13 @@ taskList.addEventListener('change', (e) => {
 function addTask(taskValue, deadline, eventUrl = null, eventId = null) {
   if (taskValue === "") return;
   
+  console.log(`Adding task to todo list: "${taskValue}", deadline: ${deadline}, eventUrl: ${eventUrl}, eventId: ${eventId}`);
+  
   const taskElement = createTaskElement(taskValue, deadline, eventUrl, eventId);
   taskList.appendChild(taskElement);
+  
+  // Log the current task list for debugging
+  console.log(`Task list now has ${taskList.children.length} items`);
 }
 
 addTaskBtn.addEventListener('click', async () => {
@@ -297,25 +302,85 @@ taskInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') addTaskBtn.click();
 });
 
-// Chat Functionality
+// Chat Interface
 const chatMessages = document.getElementById('chat-messages');
 const userInput = document.getElementById('user-input');
 const sendButton = document.getElementById('send-button');
 
-function addMessage(message, isUser = true) {
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `chat-message ${isUser ? 'user-message' : 'bot-message'}`;
+function addMessage(message, isUser = true, isMarkdown = false) {
+  const div = document.createElement('div');
+  div.className = `chat-message ${isUser ? 'user-message' : 'bot-message'}`;
+  
+  // Handle markdown formatting if enabled
+  if (isMarkdown && !isUser) {
+    // Basic markdown processing for bold, italics, links
+    let formattedMessage = message
+      // Handle bold text: **text** -> <strong>text</strong>
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Handle italic text: *text* -> <em>text</em>
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      // Handle links: [text](url) -> <a href="url">text</a>
+      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+      // Handle inline code: `code` -> <code>code</code>
+      .replace(/`(.*?)`/g, '<code>$1</code>')
+      // Handle line breaks
+      .replace(/\n/g, '<br>');
+    
+    div.innerHTML = formattedMessage;
+  } else {
+    div.textContent = message;
+  }
+  
+  // Get the chat messages container
+  const chatMessages = document.getElementById('chat-messages');
+  if (!chatMessages) {
+    console.error("Chat messages container not found");
+    return;
+  }
+  
+  // Check if user was already at the bottom before adding message
+  const wasAtBottom = chatMessages.scrollHeight - chatMessages.clientHeight <= chatMessages.scrollTop + 50;
+  
+  // Add the message
+  chatMessages.appendChild(div);
+  
+  // If user was at the bottom, scroll to the new bottom
+  if (wasAtBottom) {
+    setTimeout(() => {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 10);
+  }
+}
 
-  const lines = message.split('\n');
-  lines.forEach((line, index) => {
-      messageDiv.appendChild(document.createTextNode(line));
-      if (index !== lines.length - 1) {
-          messageDiv.appendChild(document.createElement('br'));
-      }
+function showCommandSuggestions() {
+  const commandList = document.createElement('div');
+  commandList.className = 'command-suggestions';
+  commandList.innerHTML = `
+    <div class="command-suggestion" data-command="@add ">Add Event</div>
+    <div class="command-suggestion" data-command="@remove ">Remove Event</div>
+    <div class="command-suggestion" data-command="@list">List Events</div>
+    <div class="command-suggestion" data-command="@help">Help</div>
+  `;
+  
+  // Add click handlers
+  commandList.querySelectorAll('.command-suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      userInput.value = btn.dataset.command;
+      userInput.focus();
+      commandList.remove();
+    });
   });
-
-  chatMessages.appendChild(messageDiv);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  // Add to chat container
+  const inputContainer = userInput.closest('.input-container');
+  inputContainer.parentNode.insertBefore(commandList, inputContainer);
+  
+  // Auto-hide after 15 seconds
+  setTimeout(() => {
+    if (document.body.contains(commandList)) {
+      commandList.remove();
+    }
+  }, 15000);
 }
 
 async function sendMessage() {
@@ -326,29 +391,80 @@ async function sendMessage() {
   userInput.value = '';
 
   try {
-      const response = await fetch("/chat", {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          body: JSON.stringify({ message }),
-          credentials: "include"
-      });
+    const response = await fetch("/chat", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ message }),
+      credentials: "include"
+    });
 
-      try {
-        const data = await handleApiResponse(response);
-        addMessage(data.response, false);
-      } catch (error) {
-        if (error.message === 'Authentication required') {
-          // This will be handled by handleApiResponse
-          return;
+    try {
+      const data = await handleApiResponse(response);
+      
+      // Check if this was a command response (for special formatting)
+      const isCommand = data.command_detected === true;
+      const useMarkdown = isCommand || data.markdown === true;
+      
+      addMessage(data.response, false, useMarkdown);
+      
+      // Special handling for event data from commands
+      if (isCommand && data.event_data) {
+        // If this is an @add command, add the task to the todo list
+        if (data.event_data.title && data.event_data.datetime) {
+          console.log("Adding task to todo list from chatbot command:", data.event_data);
+          
+          // Extract event ID from URL if available
+          let eventId = null;
+          if (data.event_data.event_id) {
+            eventId = data.event_data.event_id;
+          } else if (data.event_data.link) {
+            eventId = extractEventIdFromUrl(data.event_data.link);
+          }
+          
+          // Add to todo list UI
+          addTask(
+            data.event_data.title, 
+            data.event_data.datetime, 
+            data.event_data.link, 
+            eventId
+          );
+          
+          // Add to current event IDs for tracking
+          if (eventId) {
+            const currentEventIds = JSON.parse(localStorage.getItem('currentEventIds') || '[]');
+            if (!currentEventIds.includes(eventId)) {
+              currentEventIds.push(eventId);
+              localStorage.setItem('currentEventIds', JSON.stringify(currentEventIds));
+            }
+          }
+          
+          // Show success notification
+          showNotification('Task added to your todo list!', 'success');
         }
-        throw error;
       }
+      
+      // Show command suggestions to new users
+      if (message.toLowerCase() === "hi" || 
+          message.toLowerCase() === "hello" || 
+          message.toLowerCase() === "hey") {
+        setTimeout(() => {
+          addMessage("Would you like to try one of these commands?", false);
+          showCommandSuggestions();
+        }, 500);
+      }
+    } catch (error) {
+      if (error.message === 'Authentication required') {
+        // This will be handled by handleApiResponse
+        return;
+      }
+      throw error;
+    }
   } catch (error) {
-      console.error("Error:", error);
-      addMessage("Sorry, there was an error processing your request.", false);
+    console.error("Error:", error);
+    addMessage("Sorry, there was an error processing your request.", false);
   }
 }
 
@@ -649,6 +765,169 @@ function addStyles() {
       background-color: #f3f4f6;
       border-radius: 8px;
     }
+    
+    /* Fix for scrollable containers */
+    #suggestedList {
+      max-height: 60vh; /* Restore to original height while keeping scrollable */
+      min-height: 300px; /* Ensure minimum height */
+      overflow-y: auto;
+      scrollbar-width: thin;
+      padding-right: 5px;
+    }
+    
+    .suggested-section {
+      height: 100%;
+      max-height: 80vh; /* Restore to original height */
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .suggested-section h1 {
+      margin-bottom: 15px;
+    }
+    
+    /* Ensure panels are properly sized */
+    .collapsible-panel {
+      height: 100%;
+      max-height: 80vh; /* Restore to original height */
+      overflow: hidden;
+    }
+    
+    /* Scrollbar styling */
+    #suggestedList::-webkit-scrollbar,
+    #chat-messages::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    
+    #suggestedList::-webkit-scrollbar-track,
+    #chat-messages::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.05);
+      border-radius: 3px;
+    }
+    
+    #suggestedList::-webkit-scrollbar-thumb,
+    #chat-messages::-webkit-scrollbar-thumb {
+      background: rgba(0,0,0,0.15);
+      border-radius: 3px;
+    }
+    
+    #suggestedList::-webkit-scrollbar-thumb:hover,
+    #chat-messages::-webkit-scrollbar-thumb:hover {
+      background: rgba(0,0,0,0.25);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Add styles for chat command functionality
+function addChatStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    /* Command Suggestions */
+    .command-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0;
+      padding: 10px;
+      background-color: #f3f4f6;
+      border-radius: 8px;
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .command-suggestion {
+      padding: 6px 12px;
+      background-color: #e0e7ff;
+      color: #4338ca;
+      border-radius: 16px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .command-suggestion:hover {
+      background-color: #818cf8;
+      color: white;
+    }
+    
+    /* Bot message formatting */
+    .bot-message a {
+      color: #4f46e5;
+      text-decoration: none;
+      border-bottom: 1px dotted;
+    }
+    
+    .bot-message a:hover {
+      color: #4338ca;
+      border-bottom: 1px solid;
+    }
+    
+    .bot-message code {
+      background-color: #f3f4f6;
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    
+    .bot-message strong {
+      font-weight: 600;
+    }
+    
+    /* Fix chat layout */
+    .chat-section {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      max-height: 80vh; /* Restore height to original size */
+      overflow: hidden;
+    }
+    
+    .chat-section h1 {
+      margin-bottom: 15px;
+      flex-shrink: 0;
+    }
+    
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      margin-bottom: 10px;
+      min-height: 300px; /* Ensure minimum height */
+      max-height: 60vh; /* Limit maximum height */
+      scrollbar-width: thin;
+    }
+    
+    .chat-message {
+      max-width: 85%;
+      margin-bottom: 10px;
+      padding: 10px 15px;
+      border-radius: 10px;
+      word-wrap: break-word;
+    }
+    
+    .user-message {
+      background-color: #e0e7ff;
+      color: #4338ca;
+      margin-left: auto;
+    }
+    
+    .bot-message {
+      background-color: #f3f4f6;
+      color: #1f2937;
+    }
+    
+    .input-container {
+      display: flex;
+      padding: 10px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+      margin-top: auto;
+      gap: 8px;
+      flex-shrink: 0;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -666,6 +945,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Add enhanced styles
   addStyles();
+  addChatStyles(); // Add chat-specific styles
+  
+  // Make sure scrollable areas are properly initialized
+  fixScrollableAreas();
   
   // Load calendar events
   loadCalendarEvents();
@@ -803,7 +1086,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   userInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') sendMessage();
   });
+  
+  // Add @ completion for commands
+  userInput.addEventListener('input', (e) => {
+    if (e.target.value === '@') {
+      showCommandSuggestions();
+    }
+  });
+  
+  // Welcome message for new users
+  if (!localStorage.getItem('chatWelcomeSeen')) {
+    setTimeout(() => {
+      addMessage("👋 Hi there! I'm your RunDown assistant. Ask me anything about your tasks or try commands like @add, @remove, or @list. Type @help to see all commands.", false, true);
+      localStorage.setItem('chatWelcomeSeen', 'true');
+      
+      // Make sure the message is visible by scrolling to the bottom
+      const chatMessages = document.getElementById('chat-messages');
+      if (chatMessages) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }, 1000);
+  }
+  
+  // Add window resize handler to fix scroll areas
+  window.addEventListener('resize', fixScrollableAreas);
 });
+
+// Helper function to fix scrollable areas
+function fixScrollableAreas() {
+  const suggestedList = document.getElementById('suggestedList');
+  const chatMessages = document.getElementById('chat-messages');
+  
+  // Fix for suggested list
+  if (suggestedList) {
+    // Use fixed heights rather than dynamic calculations
+    suggestedList.style.maxHeight = '60vh';
+    suggestedList.style.minHeight = '300px';
+    suggestedList.style.overflowY = 'auto';
+  }
+  
+  // Fix for chat messages
+  if (chatMessages) {
+    // Use fixed heights rather than dynamic calculations
+    chatMessages.style.maxHeight = '60vh';
+    chatMessages.style.minHeight = '300px';
+    chatMessages.style.overflowY = 'auto';
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}
 
 // Helpers
 function showInputError(message) {
