@@ -95,20 +95,33 @@ const addTaskBtn = document.getElementById('addTaskBtn');
 const taskList = document.getElementById('taskList');
 const suggestionBox = document.getElementById('suggestedList');
 
-const createTaskElement = (taskText, deadline, eventUrl = null, eventId = null) => {
-  const li = document.createElement('li');
-  li.className = 'task-item';
+function addTask(taskValue, deadline, eventUrl = null, eventId = null, emailId = null) {
+  console.log(`Adding task to todo list: "${taskValue}", deadline: ${deadline}, eventUrl: ${eventUrl}, eventId: ${eventId}, emailId: ${emailId}`);
   
-  // Store event ID as data attribute if provided
-  if (eventId) {
-    li.dataset.eventId = eventId;
+  // Check if this task already exists by ID or text
+  if (isDuplicateTask(taskValue, eventId, emailId)) {
+    console.log(`Task "${taskValue}" appears to be a duplicate, not adding`);
+    showNotification("This task already exists in your list", "info");
+    return false;
   }
   
-  li.innerHTML = `
+  const taskItem = document.createElement("li");
+  taskItem.className = "task-item";
+  
+  // Store event ID and email ID as data attributes if available
+  if (eventId) {
+    taskItem.dataset.eventId = eventId;
+  }
+  
+  if (emailId) {
+    taskItem.dataset.emailId = emailId;
+  }
+  
+  taskItem.innerHTML = `
       <div class="task-content">
           <div class="status-indicator status-not-started"></div>
           <div>
-              <span class="task-text">${taskText}</span>
+              <span class="task-text">${taskValue}</span>
               ${deadline ? `<div class="task-deadline">📅 ${deadline}</div>` : ''}
               ${eventUrl ? `<a href="${eventUrl}" target="_blank" class="event-link">🔗 Calendar Event</a>` : ''}
           </div>
@@ -122,92 +135,30 @@ const createTaskElement = (taskText, deadline, eventUrl = null, eventId = null) 
           <button class="delete-btn">🗑️</button>
       </div>
   `;
-  return li;
-};
-
-// Event Delegation for Tasks
-taskList.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('delete-btn')) {
-      const taskItem = e.target.closest('.task-item');
-      const eventId = taskItem.dataset.eventId;
-      
-      // If there's an event ID, delete from calendar
-      if (eventId) {
-        try {
-          const deleteButton = e.target;
-          // Change the button to indicate deletion in progress
-          deleteButton.textContent = '⏳';
-          deleteButton.disabled = true;
-          
-          console.log(`Deleting calendar event with ID: ${eventId}`);
-          const response = await fetch('/calendar/delete', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ event_id: eventId }),
-            credentials: 'include'
-          });
-          
-          // Handle the response with our utility function
-          try {
-            const responseData = await handleApiResponse(response);
-            console.log('Response from deletion API:', responseData);
-            
-            // Success - show feedback before removing
-            deleteButton.textContent = '✅';
-            showNotification('Event deleted successfully from calendar!', 'success');
-            
-            // Store deleted event IDs to prevent re-suggesting
-            const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
-            if (!deletedEventIds.includes(eventId)) {
-              deletedEventIds.push(eventId);
-              localStorage.setItem('deletedEventIds', JSON.stringify(deletedEventIds));
-            }
-            
-            setTimeout(() => {
-              taskItem.remove();
-            }, 500);
-          } catch (error) {
-            if (error.message === 'Authentication required') {
-              // This will be handled by handleApiResponse
-              return;
-            }
-            
-            console.error('Failed to delete calendar event:', error.message);
-            showNotification(`Failed to delete calendar event: ${error.message}`, 'error');
-            // Show error but still remove from UI
-            deleteButton.textContent = '❌';
-            setTimeout(() => {
-              taskItem.remove();
-            }, 1000);
-          }
-        } catch (error) {
-          console.error('Error deleting calendar event:', error);
-          showNotification(`Error deleting event: ${error.message}`, 'error');
-          taskItem.remove(); // Still remove from UI even if API fails
-        }
-      } else {
-        // No calendar event associated, just remove from UI
-        taskItem.remove();
-      }
-  }
-});
-
-taskList.addEventListener('change', (e) => {
-  if (e.target.classList.contains('status-select')) {
-      const status = e.target.value;
-      const indicator = e.target.closest('.task-item').querySelector('.status-indicator');
-      indicator.className = `status-indicator status-${status.replace(' ', '-')}`;
-  }
-});
-
-function addTask(taskValue, deadline, eventUrl = null, eventId = null) {
-  if (taskValue === "") return;
+  taskList.appendChild(taskItem);
   
-  const taskElement = createTaskElement(taskValue, deadline, eventUrl, eventId);
-  taskList.appendChild(taskElement);
+  // Log the current task list for debugging
+  console.log(`Task list now has ${taskList.children.length} items`);
+  return true;
+}
+
+function isDuplicateTask(taskText, eventId = null, emailId = null) {
+  // First check existing event IDs if provided
+  if (eventId) {
+    const existingItem = document.querySelector(`.task-item[data-event-id="${eventId}"]`);
+    if (existingItem) return true;
+  }
+  
+  // Then check email IDs if provided
+  if (emailId) {
+    const existingItem = document.querySelector(`.task-item[data-email-id="${emailId}"]`);
+    if (existingItem) return true;
+  }
+  
+  // Finally check by task text
+  const existingTaskTexts = Array.from(taskList.querySelectorAll('.task-text'))
+    .map(el => el.textContent.toLowerCase().trim());
+  return existingTaskTexts.includes(taskText.toLowerCase().trim());
 }
 
 addTaskBtn.addEventListener('click', async () => {
@@ -268,7 +219,7 @@ addTaskBtn.addEventListener('click', async () => {
       
       // Add to UI with formatted deadline
       const displayDeadline = data.deadline || (deadline ? new Date(deadline).toLocaleString() : '');
-      addTask(data.response || taskText, displayDeadline, data.event, eventId);
+      addTask(data.response || taskText, displayDeadline, data.event, eventId, data.email_id);
       
       showNotification('Task added successfully!', 'success');
       
@@ -297,25 +248,85 @@ taskInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') addTaskBtn.click();
 });
 
-// Chat Functionality
+// Chat Interface
 const chatMessages = document.getElementById('chat-messages');
 const userInput = document.getElementById('user-input');
 const sendButton = document.getElementById('send-button');
 
-function addMessage(message, isUser = true) {
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `chat-message ${isUser ? 'user-message' : 'bot-message'}`;
+function addMessage(message, isUser = true, isMarkdown = false) {
+  const div = document.createElement('div');
+  div.className = `chat-message ${isUser ? 'user-message' : 'bot-message'}`;
+  
+  // Handle markdown formatting if enabled
+  if (isMarkdown && !isUser) {
+    // Basic markdown processing for bold, italics, links
+    let formattedMessage = message
+      // Handle bold text: **text** -> <strong>text</strong>
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Handle italic text: *text* -> <em>text</em>
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      // Handle links: [text](url) -> <a href="url">text</a>
+      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+      // Handle inline code: `code` -> <code>code</code>
+      .replace(/`(.*?)`/g, '<code>$1</code>')
+      // Handle line breaks
+      .replace(/\n/g, '<br>');
+    
+    div.innerHTML = formattedMessage;
+  } else {
+    div.textContent = message;
+  }
+  
+  // Get the chat messages container
+  const chatMessages = document.getElementById('chat-messages');
+  if (!chatMessages) {
+    console.error("Chat messages container not found");
+    return;
+  }
+  
+  // Check if user was already at the bottom before adding message
+  const wasAtBottom = chatMessages.scrollHeight - chatMessages.clientHeight <= chatMessages.scrollTop + 50;
+  
+  // Add the message
+  chatMessages.appendChild(div);
+  
+  // If user was at the bottom, scroll to the new bottom
+  if (wasAtBottom) {
+    setTimeout(() => {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 10);
+  }
+}
 
-  const lines = message.split('\n');
-  lines.forEach((line, index) => {
-      messageDiv.appendChild(document.createTextNode(line));
-      if (index !== lines.length - 1) {
-          messageDiv.appendChild(document.createElement('br'));
-      }
+function showCommandSuggestions() {
+  const commandList = document.createElement('div');
+  commandList.className = 'command-suggestions';
+  commandList.innerHTML = `
+    <div class="command-suggestion" data-command="@add ">Add Event</div>
+    <div class="command-suggestion" data-command="@remove ">Remove Event</div>
+    <div class="command-suggestion" data-command="@list">List Events</div>
+    <div class="command-suggestion" data-command="@help">Help</div>
+  `;
+  
+  // Add click handlers
+  commandList.querySelectorAll('.command-suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      userInput.value = btn.dataset.command;
+      userInput.focus();
+      commandList.remove();
+    });
   });
-
-  chatMessages.appendChild(messageDiv);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  // Add to chat container
+  const inputContainer = userInput.closest('.input-container');
+  inputContainer.parentNode.insertBefore(commandList, inputContainer);
+  
+  // Auto-hide after 15 seconds
+  setTimeout(() => {
+    if (document.body.contains(commandList)) {
+      commandList.remove();
+    }
+  }, 15000);
 }
 
 async function sendMessage() {
@@ -326,29 +337,91 @@ async function sendMessage() {
   userInput.value = '';
 
   try {
-      const response = await fetch("/chat", {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          body: JSON.stringify({ message }),
-          credentials: "include"
-      });
+    const response = await fetch("/chat", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ message }),
+      credentials: "include"
+    });
 
-      try {
-        const data = await handleApiResponse(response);
-        addMessage(data.response, false);
-      } catch (error) {
-        if (error.message === 'Authentication required') {
-          // This will be handled by handleApiResponse
-          return;
+    try {
+      const data = await handleApiResponse(response);
+      
+      // Check if this was a command response (for special formatting)
+      const isCommand = data.command_detected === true;
+      const useMarkdown = isCommand || data.markdown === true;
+      
+      addMessage(data.response, false, useMarkdown);
+      
+      // Special handling for event data from commands
+      if (isCommand && data.event_data) {
+        // If this is an @add command, add the task to the todo list
+        if (data.event_data.title && data.event_data.datetime) {
+          console.log("Adding task to todo list from chatbot command:", data.event_data);
+          
+          // Extract event ID from URL if available
+          let eventId = null;
+          if (data.event_data.event_id) {
+            eventId = data.event_data.event_id;
+          } else if (data.event_data.link) {
+            eventId = extractEventIdFromUrl(data.event_data.link);
+          }
+          
+          // Add to todo list UI
+          const addedTask = addTask(
+            data.event_data.title, 
+            data.event_data.datetime, 
+            data.event_data.link, 
+            eventId,
+            data.event_data.email_id
+          );
+          
+          if (addedTask) {
+            showNotification(`Added "${data.event_data.title}" to your task list`, "success");
+          }
+          
+          // Add to current event IDs for tracking
+          if (eventId) {
+            const currentEventIds = JSON.parse(localStorage.getItem('currentEventIds') || '[]');
+            if (!currentEventIds.includes(eventId)) {
+              currentEventIds.push(eventId);
+              localStorage.setItem('currentEventIds', JSON.stringify(currentEventIds));
+            }
+          }
+          
+          // Add email ID to the list of processed emails
+          if (data.event_data.email_id) {
+            const processedEmailIds = JSON.parse(localStorage.getItem('processedEmailIds') || '[]');
+            if (!processedEmailIds.includes(data.event_data.email_id)) {
+              processedEmailIds.push(data.event_data.email_id);
+              localStorage.setItem('processedEmailIds', JSON.stringify(processedEmailIds));
+            }
+          }
         }
-        throw error;
       }
+      
+      // Show command suggestions to new users
+      if (message.toLowerCase() === "hi" || 
+          message.toLowerCase() === "hello" || 
+          message.toLowerCase() === "hey") {
+        setTimeout(() => {
+          addMessage("Would you like to try one of these commands?", false);
+          showCommandSuggestions();
+        }, 500);
+      }
+    } catch (error) {
+      if (error.message === 'Authentication required') {
+        // This will be handled by handleApiResponse
+        return;
+      }
+      throw error;
+    }
   } catch (error) {
-      console.error("Error:", error);
-      addMessage("Sorry, there was an error processing your request.", false);
+    console.error("Error:", error);
+    addMessage("Sorry, there was an error processing your request.", false);
   }
 }
 
@@ -371,13 +444,6 @@ function extractEventIdFromUrl(url) {
   }
   
   return null;
-}
-
-// Helper function to check if an item already exists in the to-do list
-function isDuplicateTask(taskText) {
-  const existingTasks = Array.from(taskList.querySelectorAll('.task-text'))
-    .map(el => el.textContent.toLowerCase().trim());
-  return existingTasks.includes(taskText.toLowerCase().trim());
 }
 
 // Load calendar events as tasks
@@ -411,7 +477,7 @@ async function loadCalendarEvents() {
             eventIds.push(event.id);
           }
           
-          addTask(title, start, event.htmlLink, event.id);
+          addTask(title, start, event.htmlLink, event.id, event.email_id);
         });
         
         // Store the event IDs in localStorage for comparison with suggestions
@@ -478,66 +544,96 @@ function addSuggestion(suggestion) {
 }
 
 async function getSuggestions() {
+  // First, check if the filter dropdown exists, if not, create it
+  let filterContainer = document.querySelector('.filter-container');
+  
+  if (!filterContainer) {
+    filterContainer = document.createElement('div');
+    filterContainer.className = 'filter-container';
+    filterContainer.innerHTML = `
+      <label for="time-period-filter">Show emails from:</label>
+      <select id="time-period-filter" class="filter-dropdown">
+        <option value="1">Last 24 hours</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="15">Last 15 days</option>
+        <option value="30">Last 30 days</option>
+      </select>
+    `;
+    suggestionBox.parentNode.insertBefore(filterContainer, suggestionBox);
+    
+    // Add event listener to reload suggestions when the filter changes
+    document.getElementById('time-period-filter').addEventListener('change', getSuggestions);
+  }
+  
+  // Get the selected time period
+  const timePeriod = document.getElementById('time-period-filter').value;
+  
   suggestionBox.innerHTML = '<div class="loading">Loading suggestions...</div>';
   try {
-      const response = await fetch("/addsuggestion", {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          credentials: "include"
-      });
+    const response = await fetch("/addsuggestion", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ time_period: timePeriod }),
+      credentials: "include"
+    });
 
-      try {
-        const data = await handleApiResponse(response);
+    try {
+      const data = await handleApiResponse(response);
+      
+      // Clear the suggestions
+      suggestionBox.innerHTML = '';
+      
+      if (data.suggestions?.length) {
+        // Get currently displayed tasks and deleted events
+        const currentEventIds = JSON.parse(localStorage.getItem('currentEventIds') || '[]');
+        const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
+        const existingTaskTexts = Array.from(taskList.querySelectorAll('.task-text'))
+          .map(el => el.textContent.toLowerCase().trim());
         
-        // Clear the suggestions
-        suggestionBox.innerHTML = '';
+        // Filter suggestions to avoid duplicates
+        const filteredSuggestions = data.suggestions.filter(suggestion => {
+          // Skip suggestions that are already in the task list by title
+          const suggestionText = suggestion.text.toLowerCase().trim();
+          if (existingTaskTexts.includes(suggestionText)) {
+            console.log(`Skipping suggestion already in task list: ${suggestion.text}`);
+            return false;
+          }
+          
+          // Skip suggestions for emails that are already processed
+          const processedEmailIds = JSON.parse(localStorage.getItem('processedEmailIds') || '[]');
+          if (suggestion.email_id && (
+            deletedEventIds.includes(suggestion.email_id) || 
+            processedEmailIds.includes(suggestion.email_id) || 
+            document.querySelector(`.task-item[data-email-id="${suggestion.email_id}"]`)
+          )) {
+            console.log(`Skipping suggestion from processed email: ${suggestion.email_id}`);
+            return false;
+          }
+          
+          return true;
+        });
         
-        if (data.suggestions?.length) {
-            // Get currently displayed tasks and deleted events
-            const currentEventIds = JSON.parse(localStorage.getItem('currentEventIds') || '[]');
-            const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
-            const existingTaskTexts = Array.from(taskList.querySelectorAll('.task-text'))
-              .map(el => el.textContent.toLowerCase().trim());
-            
-            // Filter suggestions to avoid duplicates
-            const filteredSuggestions = data.suggestions.filter(suggestion => {
-              // Skip suggestions that are already in the task list by title
-              const suggestionText = suggestion.text.toLowerCase().trim();
-              if (existingTaskTexts.includes(suggestionText)) {
-                console.log(`Skipping suggestion already in task list: ${suggestion.text}`);
-                return false;
-              }
-              
-              // Skip suggestions for emails that are already processed
-              if (suggestion.email_id && deletedEventIds.includes(suggestion.email_id)) {
-                console.log(`Skipping suggestion from deleted email: ${suggestion.email_id}`);
-                return false;
-              }
-              
-              return true;
-            });
-            
-            if (filteredSuggestions.length > 0) {
-              filteredSuggestions.forEach(addSuggestion);
-            } else {
-              suggestionBox.innerHTML = '<div class="no-suggestions">No new suggestions found</div>';
-            }
+        if (filteredSuggestions.length > 0) {
+          filteredSuggestions.forEach(addSuggestion);
         } else {
-            suggestionBox.innerHTML = '<div class="no-suggestions">No suggestions found based on your interests</div>';
+          suggestionBox.innerHTML = '<div class="no-suggestions">No new suggestions found</div>';
         }
-      } catch (error) {
-        if (error.message === 'Authentication required') {
-          // This will be handled by handleApiResponse
-          return;
-        }
-        throw error;
+      } else {
+        suggestionBox.innerHTML = '<div class="no-suggestions">No suggestions found based on your interests</div>';
       }
+    } catch (error) {
+      if (error.message === 'Authentication required') {
+        // This will be handled by handleApiResponse
+        return;
+      }
+      throw error;
+    }
   } catch (error) {
-      console.error("Error:", error);
-      suggestionBox.innerHTML = `<div class="error">Failed to load suggestions: ${error.message}</div>`;
+    console.error("Error:", error);
+    suggestionBox.innerHTML = `<div class="error">Failed to load suggestions: ${error.message}</div>`;
   }
 }
 
@@ -649,6 +745,189 @@ function addStyles() {
       background-color: #f3f4f6;
       border-radius: 8px;
     }
+    
+    /* Fix for scrollable containers */
+    #suggestedList {
+      max-height: 60vh; /* Restore to original height while keeping scrollable */
+      min-height: 300px; /* Ensure minimum height */
+      overflow-y: auto;
+      scrollbar-width: thin;
+      padding-right: 5px;
+    }
+    
+    .suggested-section {
+      height: 100%;
+      max-height: 80vh; /* Restore to original height */
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .suggested-section h1 {
+      margin-bottom: 15px;
+    }
+    
+    /* Ensure panels are properly sized */
+    .collapsible-panel {
+      height: 100%;
+      max-height: 80vh; /* Restore to original height */
+      overflow: hidden;
+    }
+    
+    /* Scrollbar styling */
+    #suggestedList::-webkit-scrollbar,
+    #chat-messages::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    
+    #suggestedList::-webkit-scrollbar-track,
+    #chat-messages::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.05);
+      border-radius: 3px;
+    }
+    
+    #suggestedList::-webkit-scrollbar-thumb,
+    #chat-messages::-webkit-scrollbar-thumb {
+      background: rgba(0,0,0,0.15);
+      border-radius: 3px;
+    }
+    
+    #suggestedList::-webkit-scrollbar-thumb:hover,
+    #chat-messages::-webkit-scrollbar-thumb:hover {
+      background: rgba(0,0,0,0.25);
+    }
+
+    /* Add styles for time period filter dropdown */
+    .filter-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding: 0 10px;
+    }
+    .filter-container label {
+      margin-right: 8px;
+      font-weight: bold;
+    }
+    .filter-dropdown {
+      padding: 5px 10px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      font-size: 14px;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Add styles for chat command functionality
+function addChatStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    /* Command Suggestions */
+    .command-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0;
+      padding: 10px;
+      background-color: #f3f4f6;
+      border-radius: 8px;
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .command-suggestion {
+      padding: 6px 12px;
+      background-color: #e0e7ff;
+      color: #4338ca;
+      border-radius: 16px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .command-suggestion:hover {
+      background-color: #818cf8;
+      color: white;
+    }
+    
+    /* Bot message formatting */
+    .bot-message a {
+      color: #4f46e5;
+      text-decoration: none;
+      border-bottom: 1px dotted;
+    }
+    
+    .bot-message a:hover {
+      color: #4338ca;
+      border-bottom: 1px solid;
+    }
+    
+    .bot-message code {
+      background-color: #f3f4f6;
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    
+    .bot-message strong {
+      font-weight: 600;
+    }
+    
+    /* Fix chat layout */
+    .chat-section {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      max-height: 80vh; /* Restore height to original size */
+      overflow: hidden;
+    }
+    
+    .chat-section h1 {
+      margin-bottom: 15px;
+      flex-shrink: 0;
+    }
+    
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      margin-bottom: 10px;
+      min-height: 300px; /* Ensure minimum height */
+      max-height: 60vh; /* Limit maximum height */
+      scrollbar-width: thin;
+    }
+    
+    .chat-message {
+      max-width: 85%;
+      margin-bottom: 10px;
+      padding: 10px 15px;
+      border-radius: 10px;
+      word-wrap: break-word;
+    }
+    
+    .user-message {
+      background-color: #e0e7ff;
+      color: #4338ca;
+      margin-left: auto;
+    }
+    
+    .bot-message {
+      background-color: #f3f4f6;
+      color: #1f2937;
+    }
+    
+    .input-container {
+      display: flex;
+      padding: 10px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+      margin-top: auto;
+      gap: 8px;
+      flex-shrink: 0;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -666,6 +945,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Add enhanced styles
   addStyles();
+  addChatStyles(); // Add chat-specific styles
+  
+  // Make sure scrollable areas are properly initialized
+  fixScrollableAreas();
   
   // Load calendar events
   loadCalendarEvents();
@@ -803,7 +1086,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   userInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') sendMessage();
   });
+  
+  // Add @ completion for commands
+  userInput.addEventListener('input', (e) => {
+    if (e.target.value === '@') {
+      showCommandSuggestions();
+    }
+  });
+  
+  // Welcome message for new users
+  if (!localStorage.getItem('chatWelcomeSeen')) {
+    setTimeout(() => {
+      addMessage("👋 Hi there! I'm your RunDown assistant. Ask me anything about your tasks or try commands like @add, @remove, or @list. Type @help to see all commands.", false, true);
+      localStorage.setItem('chatWelcomeSeen', 'true');
+      
+      // Make sure the message is visible by scrolling to the bottom
+      const chatMessages = document.getElementById('chat-messages');
+      if (chatMessages) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }, 1000);
+  }
+  
+  // Add window resize handler to fix scroll areas
+  window.addEventListener('resize', fixScrollableAreas);
 });
+
+// Helper function to fix scrollable areas
+function fixScrollableAreas() {
+  const suggestedList = document.getElementById('suggestedList');
+  const chatMessages = document.getElementById('chat-messages');
+  
+  // Fix for suggested list
+  if (suggestedList) {
+    // Use fixed heights rather than dynamic calculations
+    suggestedList.style.maxHeight = '60vh';
+    suggestedList.style.minHeight = '300px';
+    suggestedList.style.overflowY = 'auto';
+  }
+  
+  // Fix for chat messages
+  if (chatMessages) {
+    // Use fixed heights rather than dynamic calculations
+    chatMessages.style.maxHeight = '60vh';
+    chatMessages.style.minHeight = '300px';
+    chatMessages.style.overflowY = 'auto';
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}
 
 // Helpers
 function showInputError(message) {
@@ -814,3 +1146,91 @@ function showInputError(message) {
       taskInput.placeholder = 'Add a new task...';
   }, 2000);
 }
+
+// Event Delegation for Tasks
+taskList.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('delete-btn')) {
+    const taskItem = e.target.closest('.task-item');
+    const eventId = taskItem.dataset.eventId;
+    
+    // If there's an event ID, delete from calendar
+    if (eventId) {
+      try {
+        const deleteButton = e.target;
+        // Change the button to indicate deletion in progress
+        deleteButton.textContent = '⏳';
+        deleteButton.disabled = true;
+        
+        console.log(`Deleting calendar event with ID: ${eventId}`);
+        const response = await fetch('/calendar/delete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ event_id: eventId }),
+          credentials: 'include'
+        });
+        
+        // Handle the response with our utility function
+        try {
+          const responseData = await handleApiResponse(response);
+          console.log('Response from deletion API:', responseData);
+          
+          // Success - show feedback before removing
+          deleteButton.textContent = '✅';
+          showNotification('Event deleted successfully from calendar!', 'success');
+          
+          // Store deleted event IDs to prevent re-suggesting
+          const deletedEventIds = JSON.parse(localStorage.getItem('deletedEventIds') || '[]');
+          if (!deletedEventIds.includes(eventId)) {
+            deletedEventIds.push(eventId);
+            localStorage.setItem('deletedEventIds', JSON.stringify(deletedEventIds));
+          }
+          
+          // Also store the email ID to prevent re-suggesting
+          const emailId = taskItem.dataset.emailId;
+          if (emailId) {
+            const processedEmailIds = JSON.parse(localStorage.getItem('processedEmailIds') || '[]');
+            if (!processedEmailIds.includes(emailId)) {
+              processedEmailIds.push(emailId);
+              localStorage.setItem('processedEmailIds', JSON.stringify(processedEmailIds));
+            }
+          }
+          
+          setTimeout(() => {
+            taskItem.remove();
+          }, 500);
+        } catch (error) {
+          if (error.message === 'Authentication required') {
+            // This will be handled by handleApiResponse
+            return;
+          }
+          
+          console.error('Failed to delete calendar event:', error.message);
+          showNotification(`Failed to delete calendar event: ${error.message}`, 'error');
+          // Show error but still remove from UI
+          deleteButton.textContent = '❌';
+          setTimeout(() => {
+            taskItem.remove();
+          }, 1000);
+        }
+      } catch (error) {
+        console.error('Error deleting calendar event:', error);
+        showNotification(`Error deleting event: ${error.message}`, 'error');
+        taskItem.remove(); // Still remove from UI even if API fails
+      }
+    } else {
+      // No calendar event associated, just remove from UI
+      taskItem.remove();
+    }
+  }
+});
+
+taskList.addEventListener('change', (e) => {
+  if (e.target.classList.contains('status-select')) {
+    const status = e.target.value;
+    const indicator = e.target.closest('.task-item').querySelector('.status-indicator');
+    indicator.className = `status-indicator status-${status}`;
+  }
+});
