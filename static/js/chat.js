@@ -94,6 +94,12 @@ const taskDeadline = document.getElementById('taskDeadline');
 const addTaskBtn = document.getElementById('addTaskBtn');
 const taskList = document.getElementById('taskList');
 const suggestionBox = document.getElementById('suggestedList');
+const datePickerBtn = document.getElementById('date-picker-btn');
+
+// Add event listener for the date picker button
+datePickerBtn.addEventListener('click', () => {
+  taskDeadline.showPicker();
+});
 
 function addTask(taskValue, deadline, eventUrl = null, eventId = null, emailId = null) {
   console.log(`Adding task to todo list: "${taskValue}", deadline: ${deadline}, eventUrl: ${eventUrl}, eventId: ${eventId}, emailId: ${emailId}`);
@@ -123,7 +129,7 @@ function addTask(taskValue, deadline, eventUrl = null, eventId = null, emailId =
           <div>
               <span class="task-text">${taskValue}</span>
               ${deadline ? `<div class="task-deadline"> ${deadline}</div>` : ''}
-              ${eventUrl ? `<a href="${eventUrl}" target="_blank" class="event-link">🔗 Calendar Event</a>` : ''}
+              ${eventUrl ? `<a href="${eventUrl}" target="_blank" class="event-link">Calendar Event</a>` : ''}
           </div>
       </div>
       <div class="task-controls">
