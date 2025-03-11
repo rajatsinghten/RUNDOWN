@@ -122,7 +122,7 @@ function addTask(taskValue, deadline, eventUrl = null, eventId = null, emailId =
           <div class="status-indicator status-not-started"></div>
           <div>
               <span class="task-text">${taskValue}</span>
-              ${deadline ? `<div class="task-deadline">📅 ${deadline}</div>` : ''}
+              ${deadline ? `<div class="task-deadline"> ${deadline}</div>` : ''}
               ${eventUrl ? `<a href="${eventUrl}" target="_blank" class="event-link">🔗 Calendar Event</a>` : ''}
           </div>
       </div>
@@ -132,7 +132,7 @@ function addTask(taskValue, deadline, eventUrl = null, eventId = null, emailId =
               <option value="in-progress">In Progress</option>
               <option value="completed">Completed</option>
           </select>
-          <button class="delete-btn">🗑️</button>
+          <button class="delete-btn">Delete</button>
       </div>
   `;
   taskList.appendChild(taskItem);
@@ -1158,7 +1158,7 @@ taskList.addEventListener('click', async (e) => {
       try {
         const deleteButton = e.target;
         // Change the button to indicate deletion in progress
-        deleteButton.textContent = '⏳';
+        deleteButton.textContent = 'Deleting...';
         deleteButton.disabled = true;
         
         console.log(`Deleting calendar event with ID: ${eventId}`);
@@ -1178,7 +1178,7 @@ taskList.addEventListener('click', async (e) => {
           console.log('Response from deletion API:', responseData);
           
           // Success - show feedback before removing
-          deleteButton.textContent = '✅';
+          deleteButton.textContent = 'Success';
           showNotification('Event deleted successfully from calendar!', 'success');
           
           // Store deleted event IDs to prevent re-suggesting
@@ -1210,7 +1210,7 @@ taskList.addEventListener('click', async (e) => {
           console.error('Failed to delete calendar event:', error.message);
           showNotification(`Failed to delete calendar event: ${error.message}`, 'error');
           // Show error but still remove from UI
-          deleteButton.textContent = '❌';
+          deleteButton.textContent = 'Failed';
           setTimeout(() => {
             taskItem.remove();
           }, 1000);

@@ -239,10 +239,10 @@ def add_event_command(command_content, creds):
         
         # Format response
         formatted_datetime = event_dt.strftime("%A, %B %d, %Y at %I:%M %p")
-        response_message = f"✅ Added to calendar: **{title}**\n📅 {formatted_datetime}"
+        response_message = f"Added to calendar: **{title}**\n{formatted_datetime}"
         if location:
-            response_message += f"\n📍 {location}"
-        response_message += f"\n🔗 [View in Calendar]({event.get('htmlLink')})"
+            response_message += f"\nLocation: {location}"
+        response_message += f"\n[View in Calendar]({event.get('htmlLink')})"
         
         return jsonify({
             "response": response_message,

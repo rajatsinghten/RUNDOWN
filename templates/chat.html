@@ -20,8 +20,8 @@
 
   <!-- Main Content -->
   <div class="main-content">
-    <button class="panel-trigger left-trigger" id="left-trigger">📋 Tasks</button>
-    <button class="panel-trigger right-trigger" id="right-trigger">💬 Chats</button>
+    <button class="panel-trigger left-trigger" id="left-trigger">Tasks</button>
+    <button class="panel-trigger right-trigger" id="right-trigger">Chats</button>
 
     <div class="main-container">
       <!-- Left Panel -->
@@ -29,7 +29,7 @@
         <button class="close-panel-btn">×</button>
         <div class="suggested-section">
           <h1>Suggested Tasks</h1>
-          <button id="refresh-sug">🔄 Refresh</button>
+          <button id="refresh-sug">Refresh</button>
           <ul id="suggestedList"></ul>
         </div>
       </div>
@@ -42,8 +42,9 @@
         </div>
         <div class="input-container">
           <input type="text" id="taskInput" placeholder="Add a new task...">
-          <input type="datetime-local" id="taskDeadline">
-          <button id="addTaskBtn">➕ Add</button>
+          <input type="datetime-local" id="taskDeadline" class="hidden-datetime">
+          <button id="date-picker-btn" class="calendar-btn"><i class="far fa-calendar-alt"></i></button>
+          <button id="addTaskBtn">Add</button>
         </div>
       </div>
 
@@ -51,13 +52,13 @@
       <div class="collapsible-panel" id="right-panel">
         <button class="close-panel-btn">×</button>
         <div class="chat-section">
-          <h1>🤖 AI Assistant</h1>
+          <h1>AI Assistant</h1>
           <div class="chat-messages" id="chat-messages">
             <div class="chat-message">How can I help you today?</div>
           </div>
           <div class="input-container">
             <input type="text" id="user-input" placeholder="Type your message...">
-            <button id="send-button">🚀 Send</button>
+            <button id="send-button">Send</button>
           </div>
         </div>
       </div>

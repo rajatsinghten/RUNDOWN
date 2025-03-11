@@ -5,16 +5,27 @@
     --dark2: #1e293b;
     --text: #f8fafc;
     --background-light: #f8fafc;
-    --sidebar-width: 150px;
+    --sidebar-width: 400px;
     --top-nav-height: 60px;
+    --border-radius: 15px;
+    --box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    --transition: all 0.3s ease;
   }
   
   /* Base Styles */
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
   body {
     margin: 0;
     font-family: 'Poppins', sans-serif;
     background: var(--dark2);
     color: var(--dark);
+    min-height: 100vh;
+    overflow-x: hidden;
   }
   
   /* Navigation */
@@ -30,6 +41,8 @@
     justify-content: space-between;
     align-items: center;
     z-index: 2000;
+    height: var(--top-nav-height);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
   }
   
   .top-nav .logo {
@@ -46,6 +59,11 @@
     color: var(--text);
     text-decoration: none;
     font-weight: 500;
+    transition: opacity var(--transition);
+  }
+  
+  .top-nav .nav-links a:hover {
+    opacity: 0.8;
   }
   
   /* Main Content */
@@ -53,6 +71,9 @@
     margin-top: var(--top-nav-height);
     padding: 30px;
     min-height: calc(100vh - var(--top-nav-height));
+    width: 100%;
+    display: flex;
+    flex-direction: column;
   }
   
   /* Panels */
@@ -60,22 +81,51 @@
     display: flex;
     gap: 20px;
     height: 100%;
+    position: relative;
+    flex: 1;
   }
   
   .collapsible-panel {
     position: relative;
     width: 0;
-    height: 80vh;
+    height: 100%;
+    max-height: calc(100vh - var(--top-nav-height) - 60px);
     background: white;
-    border-radius: 15px;
+    border-radius: var(--border-radius);
     overflow: hidden;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--box-shadow);
+    display: block;
+    visibility: hidden;
+    opacity: 0;
   }
   
   .collapsible-panel.expanded {
-    width: 350px;
+    width: var(--sidebar-width);
     padding: 15px;
+    min-height: 100%;
+    display: block;
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .suggested-section,
+  .chat-section {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .suggested-section h1,
+  .chat-section h1 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
   }
   
   .close-panel-btn {
@@ -95,6 +145,7 @@
     justify-content: center;
     padding: 0;
     transition: transform 0.2s;
+    z-index: 10;
   }
   
   .close-panel-btn:hover {
@@ -106,19 +157,33 @@
     flex: 1;
     padding: 20px;
     background-color: #FFF2F2;
-    border-radius: 15px;
-    box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
     display: flex;
     flex-direction: column;
     height: 80vh;
-    margin: 0 80px;
+    max-height: calc(100vh - var(--top-nav-height) - 60px);
+    margin: 0 auto;
+    width: 100%;
+    max-width: 800px;
+  }
+
+  .todo-section h1 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    text-align: center;
   }
   
   .task-list-container {
     flex: 1;
     overflow-y: auto;
     margin-bottom: 20px;
-    padding-bottom: 80px;
+    padding-right: 5px;
+  }
+
+  #taskList, #suggestedList {
+    list-style: none;
+    padding: 0;
   }
   
   .task-item {
@@ -131,6 +196,12 @@
     border-radius: 8px;
     transition: all 0.2s ease;
     gap: 15px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  }
+
+  .task-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   }
   
   .status-indicator {
@@ -138,6 +209,7 @@
     height: 12px;
     border-radius: 50%;
     margin-right: 10px;
+    flex-shrink: 0;
   }
   
   .status-not-started { background: #ef4444; }
@@ -154,6 +226,7 @@
     margin-top: auto;
     border-radius: 10px;
     gap: 10px;
+    width: 100%;
   }
   
   input[type="text"], 
@@ -163,15 +236,50 @@
     border: 2px solid var(--background-light);
     border-radius: 10px;
     transition: border-color 0.3s;
+    font-family: 'Poppins', sans-serif;
+  }
+
+  input[type="text"]:focus, 
+  input[type="datetime-local"]:focus {
+    border-color: var(--primary);
+    outline: none;
+  }
+
+  button {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: 'Poppins', sans-serif;
+  }
+
+  /* button:hover {
+    background: var(--secondary);
+    transform: translateY(-2px);
+  } */
+
+  #refresh-sug {
+    margin-bottom: 15px;
+    width: 100%;
   }
   
   /* Chat Section */
+
+
+  
+
   .chat-message {
     margin: 10px 0;
     padding: 12px 16px;
     border-radius: 8px;
     max-width: 80%;
     animation: fadeIn 0.3s ease;
+    line-height: 1.4;
+    word-wrap: break-word;
   }
   
   .user-message {
@@ -206,18 +314,175 @@
   /* Panel Triggers */
   .panel-trigger {
     position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    background-color: #FFF2F2;
-    color: green;
+    display: block;
+    padding: 12px 15px;
+    background: var(--primary);
+    color: white;
     border: none;
-    padding: 15px 20px;
+    border-radius: var(--border-radius);
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    border-radius: 30px;
     z-index: 999;
     transition: all 0.3s;
+    font-weight: 500;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   }
   
-  .right-trigger { right: 20px; }
-  .left-trigger { left: 20px; }
+  .panel-trigger:hover {
+    background: var(--secondary);
+  }
+  
+  .right-trigger { 
+    right: 20px;
+  }
+  
+  .left-trigger { 
+    left: 20px;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    :root {
+      --sidebar-width: 250px;
+    }
+
+    .main-content {
+      padding: 20px 10px;
+    }
+
+    .todo-section {
+      margin: 0;
+      max-width: 100%;
+    }
+
+    .top-nav {
+      padding: 15px 4%;
+    }
+
+    .top-nav .logo {
+      font-size: 1.5rem;
+    }
+
+    .top-nav .nav-links {
+      gap: 10px;
+    }
+
+    .top-nav .nav-links a {
+      font-size: 0.9rem;
+    }
+
+    .panel-trigger {
+      padding: 8px 12px;
+      font-size: 0.9rem;
+    }
+
+    .right-trigger {
+      right: 10px;
+    }
+
+    .left-trigger {
+      left: 10px;
+    }
+
+    .input-container {
+      flex-direction: column;
+    }
+
+    .input-container input[type="datetime-local"] {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .top-nav .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .top-nav .logo {
+      font-size: 1.3rem;
+    }
+
+    .todo-section h1,
+    .suggested-section h1,
+    .chat-section h1 {
+      font-size: 1.3rem;
+    }
+
+    .task-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+
+  .calendar-icon {
+    color: var(--primary);
+    margin: 0 8px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: var(--transition);
+  }
+
+  .calendar-icon:hover {
+    transform: scale(1.1);
+    color: var(--secondary);
+  }
+
+  .task-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .delete-btn {
+    background-color: #ef4444;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+
+  .delete-btn:hover {
+    background-color: #dc2626;
+  }
+
+  .hidden-datetime {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    height: 0;
+    width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .calendar-btn {
+    background-color: transparent;
+    color: var(--primary);
+    border: none;
+    font-size: 1.2rem;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .calendar-btn:hover {
+    color: var(--secondary);
+    transform: scale(1.1);
+  }
+
+  /* Remove calendar icon from task items */
+  .task-controls .calendar-icon {
+    display: none;
+  }
+
+  .task-deadline {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 5px;
+  }

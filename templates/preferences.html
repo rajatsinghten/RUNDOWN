@@ -11,8 +11,9 @@
       margin: 40px auto;
       padding: 30px;
       background-color: white;
-      border-radius: 15px;
-      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+      border-radius: var(--border-radius);
+      box-shadow: var(--box-shadow);
+      width: 90%;
     }
     
     .preferences-title {
@@ -41,21 +42,23 @@
       margin-right: 10px;
       height: 18px;
       width: 18px;
+      cursor: pointer;
     }
     
     .btn-save {
-      background-color: #4F46E5;
+      background-color: var(--primary);
       color: white;
       padding: 12px 24px;
       border: none;
       border-radius: 8px;
       font-weight: 500;
       cursor: pointer;
-      transition: background-color 0.3s;
+      transition: var(--transition);
     }
     
     .btn-save:hover {
-      background-color: #4338CA;
+      background-color: var(--secondary);
+      transform: translateY(-2px);
     }
     
     .success-message {
@@ -104,20 +107,65 @@
       padding: 10px;
       border: 2px solid #e2e8f0;
       border-radius: 8px;
+      font-family: 'Poppins', sans-serif;
+    }
+    
+    .custom-interest-input input:focus {
+      border-color: var(--primary);
+      outline: none;
     }
     
     .add-custom-btn {
-      background-color: #818cf8;
+      background-color: var(--primary);
       color: white;
       border: none;
       border-radius: 8px;
       padding: 0 15px;
       cursor: pointer;
-      transition: background-color 0.3s;
+      transition: var(--transition);
     }
     
     .add-custom-btn:hover {
-      background-color: #6366f1;
+      background-color: var(--secondary);
+      transform: translateY(-2px);
+    }
+
+    .hint {
+      color: #6b7280;
+      font-size: 0.9rem;
+      margin-top: 5px;
+    }
+
+    @media (max-width: 768px) {
+      .preferences-container {
+        padding: 20px;
+        margin: 20px auto;
+      }
+
+      .checkboxes {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      }
+    }
+
+    @media (max-width: 480px) {
+      .preferences-container {
+        padding: 15px;
+        width: 95%;
+      }
+
+      .checkboxes {
+        grid-template-columns: 1fr;
+      }
+
+      .custom-interest-input {
+        flex-direction: column;
+      }
+
+      .add-custom-btn {
+        width: 100%;
+        padding: 10px;
+        margin-top: 5px;
+      }
     }
   </style>
 </head>
@@ -135,57 +183,59 @@
   </div>
 
   <!-- Main Content -->
-  <div class="preferences-container">
-    <h1 class="preferences-title">Your Preferences</h1>
-    
-    <div class="preferences-section">
-      <h2>Interest Categories</h2>
-      <p>Select the categories you're interested in. We'll use these to filter email suggestions and make your experience more relevant.</p>
+  <div class="main-content">
+    <div class="preferences-container">
+      <h1 class="preferences-title">Your Preferences</h1>
       
-      <div class="checkboxes" id="interests-container">
-        {% for category in categories %}
+      <div class="preferences-section">
+        <h2>Interest Categories</h2>
+        <p>Select the categories you're interested in. We'll use these to filter email suggestions and make your experience more relevant.</p>
+        
+        <div class="checkboxes" id="interests-container">
+          {% for category in categories %}
+          <div class="checkbox-item">
+            <input type="checkbox" id="category-{{ loop.index }}" name="interests" value="{{ category }}" 
+                  {% if category in user_preferences.interests %}checked{% endif %}>
+            <label for="category-{{ loop.index }}">{{ category }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        
+        <div class="custom-interests">
+          <h3>Custom Interests</h3>
+          <p>Add your own custom interest categories that aren't listed above.</p>
+          
+          <div class="custom-interests-list" id="custom-interests-list">
+            {% if user_preferences.custom_interests %}
+              {% for custom_interest in user_preferences.custom_interests %}
+                <div class="custom-interest-tag">
+                  {{ custom_interest }}
+                  <button type="button" class="remove-custom" data-interest="{{ custom_interest }}">×</button>
+                </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+          
+          <div class="custom-interest-input">
+            <input type="text" id="custom-interest-input" placeholder="Enter a custom interest...">
+            <button type="button" id="add-custom-btn" class="add-custom-btn">Add</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="preferences-section">
+        <h2>Email Filtering</h2>
         <div class="checkbox-item">
-          <input type="checkbox" id="category-{{ loop.index }}" name="interests" value="{{ category }}" 
-                 {% if category in user_preferences.interests %}checked{% endif %}>
-          <label for="category-{{ loop.index }}">{{ category }}</label>
+          <input type="checkbox" id="enable-filtering" name="enable-filtering" 
+                {% if user_preferences.enabled %}checked{% endif %}>
+          <label for="enable-filtering">Enable smart email filtering</label>
         </div>
-        {% endfor %}
+        <p class="hint">When enabled, we'll only suggest tasks from emails that match your interests.</p>
       </div>
       
-      <div class="custom-interests">
-        <h3>Custom Interests</h3>
-        <p>Add your own custom interest categories that aren't listed above.</p>
-        
-        <div class="custom-interests-list" id="custom-interests-list">
-          {% if user_preferences.custom_interests %}
-            {% for custom_interest in user_preferences.custom_interests %}
-              <div class="custom-interest-tag">
-                {{ custom_interest }}
-                <button type="button" class="remove-custom" data-interest="{{ custom_interest }}">×</button>
-              </div>
-            {% endfor %}
-          {% endif %}
-        </div>
-        
-        <div class="custom-interest-input">
-          <input type="text" id="custom-interest-input" placeholder="Enter a custom interest...">
-          <button type="button" id="add-custom-btn" class="add-custom-btn">Add</button>
-        </div>
-      </div>
+      <button id="save-preferences" class="btn-save">Save Preferences</button>
+      <div id="success-message" class="success-message">Preferences saved successfully!</div>
     </div>
-    
-    <div class="preferences-section">
-      <h2>Email Filtering</h2>
-      <div class="checkbox-item">
-        <input type="checkbox" id="enable-filtering" name="enable-filtering" 
-               {% if user_preferences.enabled %}checked{% endif %}>
-        <label for="enable-filtering">Enable smart email filtering</label>
-      </div>
-      <p class="hint">When enabled, we'll only suggest tasks from emails that match your interests.</p>
-    </div>
-    
-    <button id="save-preferences" class="btn-save">Save Preferences</button>
-    <div id="success-message" class="success-message">Preferences saved successfully!</div>
   </div>
 
   <script>
