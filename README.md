@@ -14,6 +14,7 @@ RunDown is an AI-powered task management system that seamlessly integrates with 
 - **Smart Date Detection**: Accurately extracts event dates mentioned in emails
 - **Intelligent Reminders**: Sets appropriate reminders for upcoming events (24h before and 30min before)
 - **Natural Language Task Entry**: Add tasks using natural language with automatic date extraction
+- **Smart Scheduling Assistant**: Ask about your availability, get suggestions for free time slots, and schedule events
 - **User Preferences**: Customize your experience with personalized interest categories
 - **Secure Authentication**: OAuth integration with Google for secure access to your data
 - **Intelligent Chatbot**: AI-powered chatbot that understands commands to add and remove events
@@ -191,8 +192,12 @@ RunDown/
    - **@add**: Create a new event (e.g., "@add Meeting with John tomorrow at 3pm")
    - **@remove**: Delete an event (e.g., "@remove Project meeting")
    - **@list**: View upcoming events on your calendar
+   - **@check**: Check your availability on a specific day (e.g., "@check tomorrow")
+   - **@when**: Ask when you're free on a specific day (e.g., "@when am I free on Friday?")
+   - **@suggest**: Get suggestions for optimal meeting times based on your calendar (e.g., "@suggest time for team dinner next week")
    - **@help**: Get information about available commands
 4. Receive intelligent responses based on your data
+5. Confirm scheduling suggestions with simple yes/no responses to add events to your calendar
 
 ## 🔄 API Endpoints
 
@@ -274,6 +279,22 @@ The built-in AI chatbot supports command prefixes for quick task management:
 - **@list**: Shows your upcoming calendar events
   - Displays events in chronological order
   - Includes date, time, and location information
+
+- **@check [date]**: Checks your availability on a specific date
+  - Shows all booked events for that day
+  - Lists available time slots for scheduling
+  - Works with natural language date references ("next Monday", "tomorrow", etc.)
+
+- **@when [query]**: Finds times when you're available for an event
+  - Analyzes your calendar for the specified day
+  - Shows all free time slots
+  - Works with queries like "When am I free tomorrow?"
+
+- **@suggest [event details]**: Suggests optimal times for scheduling events
+  - Analyzes your calendar to find suitable free time slots
+  - Considers event duration and time preferences (morning, afternoon, etc.)
+  - Offers to add the event to your calendar with a simple confirmation
+  - Example: "@suggest time for a 1-hour coffee meeting tomorrow afternoon"
 
 - **@help**: Provides information on available commands
   - Shows detailed usage examples

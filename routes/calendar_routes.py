@@ -1,23 +1,11 @@
-from flask import Blueprint, jsonify, session, redirect, request
+from flask import Blueprint, jsonify, session, redirect, request, current_app
 from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 from utils.calendar import fetch_calendar_events, delete_calendar_event
-from utils.auth import load_credentials, save_credentials
+from utils.auth import load_credentials, save_credentials, require_auth
 import traceback
 
 calendar_bp = Blueprint('calendar', __name__)
-
-def require_auth(view):
-    def wrapper(*args, **kwargs):
-        if 'user_id' not in session:
-            print(f"Authentication required but no user_id in session. Session keys: {session.keys()}")
-            # For AJAX requests, return a JSON response instead of redirecting
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.headers.get('Content-Type') == 'application/json':
-                return jsonify({"error": "Authentication required", "redirect": "/login"}), 401
-            return redirect('/login')
-        return view(*args, **kwargs)
-    wrapper.__name__ = view.__name__
-    return wrapper
 
 @calendar_bp.route('/calendar', methods=['GET', 'OPTIONS'])
 @require_auth

@@ -336,20 +336,51 @@ function showCommandSuggestions() {
 }
 
 async function sendMessage() {
+  // Get the message from the input
   const message = userInput.value.trim();
-  if (!message) return;
+  if (message === "") return;
 
+  // Add the user message to the UI
   addMessage(message, true);
   userInput.value = '';
 
+  // Check if this is a follow-up to a suggestion
+  const isFollowUp = localStorage.getItem('awaitingFollowUp') === 'true';
+  let followUpAction = '';
+
+  if (isFollowUp) {
+    // Clear the follow-up flag
+    localStorage.removeItem('awaitingFollowUp');
+    localStorage.removeItem('suggestedEventData');
+    
+    // Check if the response is positive
+    const positiveResponses = ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'add it', 'add', 'create', 'schedule', 'confirm'];
+    const isPositive = positiveResponses.some(response => message.toLowerCase().includes(response));
+    
+    if (isPositive) {
+      followUpAction = 'add_event';
+    }
+  }
+
   try {
+    // Show loading indicator
+    const loadingMessage = addMessage("...", false);
+    
+    const requestData = { message };
+    
+    // If this is a follow-up, add the necessary data
+    if (followUpAction === 'add_event') {
+      requestData.follow_up = true;
+      requestData.action = 'add_event';
+    }
+    
     const response = await fetch("/chat", {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         'X-Requested-With': 'XMLHttpRequest'
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(requestData),
       credentials: "include"
     });
 
@@ -360,7 +391,22 @@ async function sendMessage() {
       const isCommand = data.command_detected === true;
       const useMarkdown = isCommand || data.markdown === true;
       
+      // Remove loading message
+      if (loadingMessage) {
+        loadingMessage.remove();
+      }
+      
       addMessage(data.response, false, useMarkdown);
+      
+      // Handle event suggestions that need follow-up
+      if (data.ask_followup && data.event_suggestion) {
+        // Store that we're awaiting a follow-up
+        localStorage.setItem('awaitingFollowUp', 'true');
+        localStorage.setItem('suggestedEventData', JSON.stringify(data.event_suggestion));
+        
+        // Add quick response buttons for yes/no
+        addFollowUpButtons();
+      }
       
       // Special handling for event data from commands
       if (isCommand && data.event_data) {
@@ -429,6 +475,63 @@ async function sendMessage() {
     console.error("Error:", error);
     addMessage("Sorry, there was an error processing your request.", false);
   }
+}
+
+// Function to add follow-up buttons for easier responses
+function addFollowUpButtons() {
+  const buttonsContainer = document.createElement('div');
+  buttonsContainer.className = 'followup-buttons';
+  buttonsContainer.innerHTML = `
+    <button class="followup-btn yes-btn">Yes, add it</button>
+    <button class="followup-btn no-btn">No, thanks</button>
+  `;
+  
+  // Add to chat messages
+  document.getElementById('chat-messages').appendChild(buttonsContainer);
+  
+  // Add event listeners
+  buttonsContainer.querySelector('.yes-btn').addEventListener('click', () => {
+    userInput.value = "Yes, please add it to my calendar";
+    sendMessage();
+    buttonsContainer.remove();
+  });
+  
+  buttonsContainer.querySelector('.no-btn').addEventListener('click', () => {
+    userInput.value = "No, thank you";
+    sendMessage();
+    buttonsContainer.remove();
+  });
+  
+  // Add styles for the buttons
+  const style = document.createElement('style');
+  style.textContent = `
+    .followup-buttons {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    .followup-btn {
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    .yes-btn {
+      background-color: #4caf50;
+      color: white;
+    }
+    .no-btn {
+      background-color: #f44336;
+      color: white;
+    }
+    .followup-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-2px);
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 // Helper function to extract event ID from Google Calendar URL

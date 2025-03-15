@@ -2,14 +2,18 @@ from flask import current_app
 from flask import Blueprint, request, jsonify, session
 import google.generativeai as genai
 from config import GOOGLE_API_KEY
-from utils.calendar import fetch_calendar_events, create_calendar_event
+from utils.calendar import fetch_calendar_events, create_calendar_event, delete_calendar_event
 from utils.gmail import fetch_emails
-from utils.auth import load_credentials
+from utils.auth import load_credentials, require_auth
 from utils.models import UserPreferences
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import traceback
 import re
+import os
+import pytz
+from google.generativeai import GenerativeModel
+from functools import wraps
 
 chat_bp = Blueprint('chat', __name__)
 
@@ -17,37 +21,100 @@ chat_bp = Blueprint('chat', __name__)
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-def require_auth(view):
-    def wrapper(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({"error": "Unauthorized"}), 401
-        return view(*args, **kwargs)
-    wrapper.__name__ = view.__name__
-    return wrapper
-
 @chat_bp.route('/chat', methods=['POST'])
 @require_auth
 def chat():
+    """Process chat messages and commands"""
     user_id = session.get('user_id')
-    user_message = request.json.get('message', '').strip()
-    if not user_message:
-        return jsonify({"error": "Empty message"}), 400
     try:
-        creds = load_credentials(user_id)
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
         
-        # Check for command prefixes
+        # Handle follow-up requests
+        if data.get('follow_up') and data.get('action') == 'add_event':
+            # Create an event from the stored suggestion
+            suggested_event = session.get('suggested_event')
+            if suggested_event:
+                # Clear session data
+                session.pop('suggested_event', None)
+                
+                # Get credentials
+                creds = load_credentials(user_id)
+                
+                # Create event
+                title = suggested_event.get('title')
+                start_time = suggested_event.get('start')
+                end_time = suggested_event.get('end')
+                
+                if not all([title, start_time, end_time]):
+                    return jsonify({
+                        "response": "I couldn't find the details of the event you want to add. Could you please provide the event details again?",
+                        "command_detected": True
+                    })
+                
+                # Convert to datetime objects
+                start_dt = datetime.fromisoformat(start_time)
+                end_dt = datetime.fromisoformat(end_time)
+                
+                # Format dates for calendar API
+                iso_start = start_dt.isoformat()
+                iso_end = end_dt.isoformat()
+                
+                # Create the calendar event
+                description = f"Created via RunDown Chatbot\n\nScheduled on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                
+                try:
+                    event = create_calendar_event(
+                        creds,
+                        title,
+                        "RunDown Chatbot",
+                        start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                        iso_start,
+                        end_date=iso_end,
+                        description=description,
+                        set_reminder=True
+                    )
+                    
+                    # Format response
+                    formatted_datetime = start_dt.strftime("%A, %B %d, %Y at %I:%M %p")
+                    response_message = f"✅ Added to calendar: **{title}**\n📅 {formatted_datetime}\n🔗 [View in Calendar]({event.get('htmlLink')})"
+                    
+                    return jsonify({
+                        "response": response_message,
+                        "command_detected": True,
+                        "markdown": True,
+                        "event_data": {
+                            "title": title,
+                            "datetime": formatted_datetime,
+                            "event_id": event.get("id"),
+                            "link": event.get("htmlLink")
+                        }
+                    })
+                except Exception as e:
+                    current_app.logger.error(f"Error creating event from suggestion: {str(e)}")
+                    return jsonify({
+                        "response": f"I encountered an error adding the event to your calendar: {str(e)}",
+                        "command_detected": True
+                    })
+        
+        # Get credentials for API access
+        creds = load_credentials(user_id)
+        model = GenerativeModel(os.environ.get('GEMINI_MODEL', 'gemini-1.5-flash'))
+        
+        # Check for commands
         is_command = False
         command_type = None
         command_content = user_message
         
-        # Define command prefixes
+        # Define command prefixes and their handlers
         commands = {
             "@add": "add_event",
-            "@remove": "remove_event", 
-            "@delete": "remove_event",
+            "@remove": "remove_event",
             "@list": "list_events",
-            "@events": "list_events",
-            "@help": "show_help"
+            "@help": "show_help",
+            "@check": "check_availability",
+            "@when": "check_availability",
+            "@suggest": "suggest_time"
         }
         
         # Check if message starts with any command prefix
@@ -105,6 +172,10 @@ def process_command(command_type, command_content, creds, user_id):
             return list_events_command(creds)
         elif command_type == "show_help":
             return show_help_command()
+        elif command_type == "check_availability":
+            return check_availability_command(command_content, creds)
+        elif command_type == "suggest_time":
+            return suggest_time_command(command_content, creds)
         else:
             return jsonify({
                 "response": "I don't understand that command. Try @help to see available commands.",
@@ -408,29 +479,33 @@ def list_events_command(creds):
         })
 
 def show_help_command():
-    """Process the @help command to show available commands"""
-    help_text = """
-📋 **RunDown Chatbot Commands**
+    """Show available commands and help information"""
+    help_message = """
+### Available Commands:
 
-You can use the following commands:
+- **@add [event details]** - Add a new event to your calendar
+  Example: @add Team meeting tomorrow at 3pm
+  
+- **@remove [event name]** - Remove an event from your calendar
+  Example: @remove Team meeting
+  
+- **@list** - Show your upcoming calendar events
+  
+- **@check [date]** - Check your availability on a specific date
+  Example: @check tomorrow
+  Example: @check Friday
+  
+- **@when [event description]** - Find a suitable time for an event
+  Example: @when can I schedule a team meeting on Wednesday?
+  
+- **@suggest [event description]** - Suggest a free time for an event
+  Example: @suggest time for a coffee break tomorrow
 
-**Calendar Management**
-- `@add [event details]` - Add an event to your calendar
-  Example: `@add Team meeting tomorrow at 2pm`
-
-- `@remove [event title or ID]` - Remove an event from your calendar
-  Example: `@remove Team meeting`
-
-- `@list` or `@events` - List your upcoming calendar events
-
-**General**
-- `@help` - Show this help message
-
-You can also ask me questions about your tasks, calendar, or email!
+- **@help** - Show this help message
     """
     
     return jsonify({
-        "response": help_text,
+        "response": help_message,
         "command_detected": True,
         "markdown": True
     })
@@ -816,3 +891,327 @@ def add_task():
         current_app.logger.error(f"Add task error: {str(e)}")
         current_app.logger.error(traceback.format_exc())
         return jsonify({"error": "Internal server error"}), 500
+
+def find_free_slots(events, date_to_check, timezone="America/New_York"):
+    """
+    Find free time slots on a given day
+    
+    Args:
+        events: List of calendar events
+        date_to_check: Date to check for free time slots (datetime.date object)
+        timezone: Timezone to use for calculations
+    
+    Returns:
+        List of free time slots as (start, end) tuples
+    """
+    # Set up the time zone
+    tz = pytz.timezone(timezone)
+    
+    # Define the start and end of the working day (9 AM to 8 PM)
+    work_start_time = time(9, 0)  # 9 AM
+    work_end_time = time(20, 0)   # 8 PM
+    
+    # Create datetime objects for the start and end of the working day
+    day_start = datetime.combine(date_to_check, work_start_time)
+    day_start = tz.localize(day_start)
+    day_end = datetime.combine(date_to_check, work_end_time)
+    day_end = tz.localize(day_end)
+    
+    # Filter events that fall on the specified date
+    day_events = []
+    for event in events:
+        # Parse event start and end times
+        event_start = event.get('start', {}).get('dateTime')
+        event_end = event.get('end', {}).get('dateTime')
+        
+        if not event_start or not event_end:
+            continue
+            
+        # Convert to datetime objects
+        try:
+            event_start_dt = datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+            event_end_dt = datetime.fromisoformat(event_end.replace('Z', '+00:00'))
+            
+            # Convert to target timezone
+            event_start_dt = event_start_dt.astimezone(tz)
+            event_end_dt = event_end_dt.astimezone(tz)
+            
+            # Check if the event falls on the target date
+            if event_start_dt.date() == date_to_check or event_end_dt.date() == date_to_check:
+                # Clip events to the working day if needed
+                if event_start_dt.date() < date_to_check:
+                    event_start_dt = day_start
+                if event_end_dt.date() > date_to_check:
+                    event_end_dt = day_end
+                    
+                day_events.append((event_start_dt, event_end_dt, event.get('summary', 'No Title')))
+        except Exception as e:
+            current_app.logger.error(f"Error parsing event date: {e}")
+            continue
+    
+    # Sort events by start time
+    day_events.sort(key=lambda x: x[0])
+    
+    # Find free time slots
+    free_slots = []
+    current_time = day_start
+    
+    for start, end, _ in day_events:
+        # If there's a gap between current_time and the next event's start
+        if current_time < start:
+            # Only add slots that are at least 30 minutes
+            if (start - current_time).total_seconds() >= 30 * 60:
+                free_slots.append((current_time, start))
+                
+        # Update current time to the end of this event
+        current_time = max(current_time, end)
+    
+    # Check for free time after the last event until end of day
+    if current_time < day_end:
+        free_slots.append((current_time, day_end))
+    
+    return free_slots, day_events
+
+def format_time_slot(slot):
+    """Format a time slot for display"""
+    start, end = slot
+    # Format as "10:00 AM - 11:30 AM"
+    return f"{start.strftime('%I:%M %p')} - {end.strftime('%I:%M %p')}"
+
+def parse_date_with_ai(date_text, model):
+    """Use AI to parse a date string into a datetime object"""
+    prompt = f"""
+    Parse the following date/time reference into a specific date: "{date_text}"
+    
+    Today is {datetime.now().strftime('%A, %B %d, %Y')}.
+    If no specific date is mentioned, assume today.
+    If a day of week is mentioned (e.g., "Monday"), use the upcoming one.
+    
+    Respond with ONLY a date in YYYY-MM-DD format.
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        date_str = response.text.strip()
+        
+        # Extract just the date if there's additional text
+        import re
+        date_match = re.search(r'\d{4}-\d{2}-\d{2}', date_str)
+        if date_match:
+            date_str = date_match.group(0)
+            
+        # Convert to date object
+        parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        return parsed_date
+    except Exception as e:
+        current_app.logger.error(f"Error parsing date with AI: {e}")
+        # Return today's date as fallback
+        return datetime.now().date()
+
+def check_availability_command(command_content, creds):
+    """Process availability check command and return free time slots"""
+    if not command_content:
+        return jsonify({
+            "response": "Please specify a date to check. For example: @check tomorrow",
+            "command_detected": True
+        })
+    
+    try:
+        # Initialize the model for date parsing
+        model = GenerativeModel(os.environ.get('GEMINI_MODEL', 'gemini-1.5-flash'))
+        
+        # Parse the date using AI
+        date_to_check = parse_date_with_ai(command_content, model)
+        
+        # Fetch calendar events
+        events = fetch_calendar_events(creds)
+        
+        # Get free time slots and booked events
+        free_slots, booked_events = find_free_slots(events, date_to_check)
+        
+        # Format the response
+        formatted_date = date_to_check.strftime("%A, %B %d, %Y")
+        
+        # Format the response message
+        if not booked_events:
+            response = f"### Availability for {formatted_date}\n\nYou have no events scheduled for this day. You're completely free from 9:00 AM to 8:00 PM."
+        else:
+            response = f"### Availability for {formatted_date}\n\n"
+            
+            # Add booked events
+            response += "**Booked Events:**\n"
+            for start, end, summary in booked_events:
+                response += f"- {summary}: {start.strftime('%I:%M %p')} - {end.strftime('%I:%M %p')}\n"
+            
+            # Add free slots
+            response += "\n**Free Time Slots:**\n"
+            if free_slots:
+                for i, slot in enumerate(free_slots, 1):
+                    response += f"{i}. {format_time_slot(slot)}\n"
+            else:
+                response += "You have no free time slots available on this day."
+        
+        # Store the free slots in session for possible follow-up
+        session['free_slots'] = [
+            {
+                'start': slot[0].isoformat(),
+                'end': slot[1].isoformat()
+            } for slot in free_slots
+        ]
+        session['availability_date'] = date_to_check.isoformat()
+        
+        return jsonify({
+            "response": response,
+            "command_detected": True,
+            "markdown": True,
+            "free_slots": len(free_slots) > 0
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error checking availability: {e}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            "response": f"I encountered an error checking your availability: {str(e)}",
+            "command_detected": True
+        })
+
+def suggest_time_command(command_content, creds):
+    """Suggest a free time slot for an event based on calendar availability"""
+    if not command_content:
+        return jsonify({
+            "response": "Please describe the event you want to schedule. For example: @suggest time for a coffee break tomorrow",
+            "command_detected": True
+        })
+    
+    try:
+        # Initialize the model
+        model = GenerativeModel(os.environ.get('GEMINI_MODEL', 'gemini-1.5-flash'))
+        
+        # Extract event details and target date
+        prompt = f"""
+        Extract event information from this request: "{command_content}"
+        
+        Provide a JSON response with:
+        1. Event title (a concise description of the activity)
+        2. The target date for this event
+        3. Estimated duration in minutes
+        4. Any mentioned preferences (morning, afternoon, etc)
+        
+        Format:
+        {{
+            "title": "Event title",
+            "target_date": "specific date or day reference like 'tomorrow', 'next Friday'",
+            "duration": duration in minutes (default to 60 if not specified),
+            "preference": "time preference (morning, afternoon, evening, etc) or null"
+        }}
+        """
+        
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        # Extract JSON from response if needed
+        if "```json" in response_text:
+            json_str = response_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            json_str = response_text.split("```")[1].strip()
+        else:
+            json_str = response_text
+            
+        event_data = json.loads(json_str)
+        
+        # Parse the date
+        target_date = parse_date_with_ai(event_data.get("target_date", "today"), model)
+        
+        # Get event title and duration
+        title = event_data.get("title", "New Event")
+        duration = int(event_data.get("duration", 60))  # in minutes
+        preference = event_data.get("preference")
+        
+        # Fetch calendar events
+        events = fetch_calendar_events(creds)
+        
+        # Find free slots
+        free_slots, _ = find_free_slots(events, target_date)
+        
+        # Filter slots based on duration and preference
+        suitable_slots = []
+        for start, end in free_slots:
+            slot_duration = (end - start).total_seconds() / 60
+            
+            # Check if the slot is long enough
+            if slot_duration >= duration:
+                # Create potential slots within this free period
+                potential_starts = []
+                current = start
+                while (current + timedelta(minutes=duration)) <= end:
+                    potential_starts.append(current)
+                    current += timedelta(minutes=30)  # 30-minute increments
+                
+                # Add all potential start times to suitable slots
+                for potential_start in potential_starts:
+                    slot_end = potential_start + timedelta(minutes=duration)
+                    suitable_slots.append((potential_start, slot_end))
+        
+        # Apply time preference if specified
+        if preference and suitable_slots:
+            filtered_slots = []
+            
+            if preference.lower() in ["morning", "am", "early"]:
+                # Morning: 9 AM - 12 PM
+                filtered_slots = [s for s in suitable_slots if s[0].hour < 12]
+            elif preference.lower() in ["afternoon", "noon", "lunch"]:
+                # Afternoon: 12 PM - 5 PM
+                filtered_slots = [s for s in suitable_slots if 12 <= s[0].hour < 17]
+            elif preference.lower() in ["evening", "night", "pm", "late"]:
+                # Evening: 5 PM - 8 PM
+                filtered_slots = [s for s in suitable_slots if s[0].hour >= 17]
+                
+            if filtered_slots:
+                suitable_slots = filtered_slots
+        
+        # No suitable slots found
+        if not suitable_slots:
+            formatted_date = target_date.strftime("%A, %B %d, %Y")
+            return jsonify({
+                "response": f"I couldn't find a suitable time for a {duration}-minute '{title}' on {formatted_date}. Would you like to check a different day?",
+                "command_detected": True,
+                "ask_followup": False
+            })
+            
+        # Select the best slot (first available, or based on preference)
+        best_slot = suitable_slots[0]
+        
+        # Format the suggestion
+        start_time = best_slot[0].strftime("%I:%M %p")
+        end_time = best_slot[1].strftime("%I:%M %p")
+        formatted_date = target_date.strftime("%A, %B %d, %Y")
+        
+        # Store event info for follow-up
+        session['suggested_event'] = {
+            'title': title,
+            'start': best_slot[0].isoformat(),
+            'end': best_slot[1].isoformat(),
+            'date': target_date.isoformat()
+        }
+        
+        response = f"### Time Suggestion\n\nI suggest scheduling **{title}** on **{formatted_date}** from **{start_time}** to **{end_time}**.\n\nWould you like me to add this to your calendar?"
+        
+        return jsonify({
+            "response": response,
+            "command_detected": True,
+            "markdown": True,
+            "ask_followup": True,
+            "event_suggestion": {
+                "title": title,
+                "date": formatted_date,
+                "start_time": start_time,
+                "end_time": end_time
+            }
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error suggesting time: {e}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            "response": f"I encountered an error suggesting a time for your event: {str(e)}",
+            "command_detected": True
+        })

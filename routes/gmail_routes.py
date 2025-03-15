@@ -1,16 +1,8 @@
-from flask import Blueprint, jsonify, session, redirect
+from flask import Blueprint, jsonify, session, redirect, current_app
 from utils.gmail import fetch_emails
-from utils.auth import load_credentials
+from utils.auth import load_credentials, require_auth
 
 gmail_bp = Blueprint('gmail', __name__)
-
-def require_auth(view):
-    def wrapper(*args, **kwargs):
-        if 'user_id' not in session:
-            return redirect('/login')
-        return view(*args, **kwargs)
-    wrapper.__name__ = view.__name__
-    return wrapper
 
 @gmail_bp.route('/gmail')
 @require_auth
@@ -22,5 +14,5 @@ def get_emails():
             return redirect('/login')
         return jsonify({'emails': email_details})
     except Exception as e:
-        gmail_bp.logger.error(f"Failed to fetch emails: {str(e)}")
+        current_app.logger.error(f"Failed to fetch emails: {str(e)}")
         return jsonify({"error": "Failed to fetch emails"}), 500

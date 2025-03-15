@@ -2,6 +2,8 @@
 import os
 import json
 from pathlib import Path
+from functools import wraps
+from flask import session, jsonify, request, redirect
 from cryptography.fernet import Fernet
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
@@ -47,3 +49,18 @@ def load_credentials(user_id):
         encrypted_creds = f.read()
     decrypted_creds = cipher.decrypt(encrypted_creds).decode()
     return Credentials.from_authorized_user_info(json.loads(decrypted_creds))
+
+def require_auth(view):
+    """Decorator to require authentication for routes."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if 'user_id' not in session:
+            # For AJAX requests, return a JSON response instead of redirecting
+            if request and (
+                request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 
+                request.headers.get('Content-Type') == 'application/json'
+            ):
+                return jsonify({"error": "Authentication required", "redirect": "/login"}), 401
+            return redirect('/login')
+        return view(*args, **kwargs)
+    return wrapper

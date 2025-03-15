@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, session, redirect, request, render_template
-from utils.auth import load_credentials
+from utils.auth import load_credentials, require_auth
 from utils.models import UserPreferences
 
 preferences_bp = Blueprint('preferences', __name__)
@@ -20,14 +20,6 @@ AVAILABLE_CATEGORIES = [
     "Clubs & Organizations",
     "Social Events"
 ]
-
-def require_auth(view):
-    def wrapper(*args, **kwargs):
-        if 'user_id' not in session:
-            return redirect('/login')
-        return view(*args, **kwargs)
-    wrapper.__name__ = view.__name__
-    return wrapper
 
 @preferences_bp.route('/preferences')
 @require_auth
