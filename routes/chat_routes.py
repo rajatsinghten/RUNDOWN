@@ -138,7 +138,7 @@ def chat():
         prompt = f"""
         You are an AI assistant for RunDown, a task management application. You have access to the following information:
         
-        {f'**Relevant Data:**\n{relevant_data}' if relevant_data else ''}
+        {f'**Relevant Data:**{relevant_data}' if relevant_data else ''}
         
         The user can use the following commands:
         - @add [event details] - Add an event to calendar (e.g., "@add Meeting with John tomorrow at 3pm")
