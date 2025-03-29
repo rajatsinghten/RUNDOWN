@@ -8,4 +8,12 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.0
       - key: FLASK_ENV
-        value: production 
+        value: production
+      - key: OAUTH_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_CREDENTIALS
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false 

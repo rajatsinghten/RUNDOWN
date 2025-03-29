@@ -26,10 +26,25 @@ cipher = Fernet(key)
 
 def get_flow():
     """Create and return a Google OAuth flow instance."""
+    # Try to get credentials from environment variable first
+    credentials_json = os.environ.get('GOOGLE_CREDENTIALS')
+    if credentials_json:
+        try:
+            # Parse the JSON string from environment variable
+            credentials_dict = json.loads(credentials_json)
+            return Flow.from_client_config(
+                credentials_dict,
+                scopes=SCOPES,
+                redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'http://127.0.0.1:5000/oauth/callback')
+            )
+        except json.JSONDecodeError as e:
+            print(f"Error parsing credentials from environment: {e}")
+    
+    # Fallback to credentials.json file
     return Flow.from_client_secrets_file(
         'credentials.json',
         scopes=SCOPES,
-        redirect_uri='http://127.0.0.1:5000/oauth/callback'
+        redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'http://127.0.0.1:5000/oauth/callback')
     )
 
 def save_credentials(user_id, credentials):
