@@ -10,7 +10,7 @@ services:
       - key: FLASK_ENV
         value: production
       - key: OAUTH_REDIRECT_URI
-        sync: false
+        value: https://rundown.onrender.com/oauth/callback
       - key: GOOGLE_CREDENTIALS
         sync: false
       - key: GOOGLE_API_KEY
