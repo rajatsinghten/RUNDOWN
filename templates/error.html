@@ -121,7 +121,11 @@
     
     <div class="actions">
       <a href="/" class="button">Go to Homepage</a>
+      {% if retry_url %}
+      <a href="{{ retry_url }}" class="button secondary">Try Logging In Again</a>
+      {% else %}
       <a href="/login" class="button secondary">Try Logging In Again</a>
+      {% endif %}
     </div>
   </div>
   
@@ -143,4 +147,4 @@
     }
   </script>
 </body>
-</html> 
+</html>

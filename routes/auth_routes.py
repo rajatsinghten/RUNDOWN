@@ -1,6 +1,6 @@
-from flask import Blueprint, redirect, request, session, render_template, jsonify, make_response
+from flask import Blueprint, redirect, request, session, render_template, jsonify, make_response, url_for
 from googleapiclient.discovery import build
-from config import SECRET_KEY
+from config import SECRET_KEY, SCOPES
 from utils.auth import get_flow, save_credentials
 import traceback
 
@@ -76,6 +76,16 @@ def auth_status():
     return jsonify({
         "authenticated": False
     }), 401
+
+@auth_bp.route('/scope-changed')
+def scope_changed():
+    """Inform the user that application permissions have changed and they need to re-authenticate."""
+    message = (
+        "Our application has been updated with new features that require additional permissions. "
+        "Specifically, we've added calendar event management capabilities. "
+        "Please log in again to continue using RunDown with all features."
+    )
+    return render_template('error.html', error=message, retry_url=url_for('auth.login'))
 
 @auth_bp.route('/logout')
 def logout():

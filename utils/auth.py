@@ -35,7 +35,7 @@ def get_flow():
             return Flow.from_client_config(
                 credentials_dict,
                 scopes=SCOPES,
-                redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'https://rundown-sx8n.onrender.com/oauth/callback/')
+                redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'https://rundown-sx8n.onrender.com/oauth/callback')
             )
         except json.JSONDecodeError as e:
             print(f"Error parsing credentials from environment: {e}")
@@ -44,7 +44,7 @@ def get_flow():
     return Flow.from_client_secrets_file(
         'credentials.json',
         scopes=SCOPES,
-        redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'http://127.0.0.1:5000/oauth/callback')
+        redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'https://rundown-sx8n.onrender.com/oauth/callback')
     )
 
 def save_credentials(user_id, credentials):
@@ -63,7 +63,20 @@ def load_credentials(user_id):
     with open(token_path, 'rb') as f:
         encrypted_creds = f.read()
     decrypted_creds = cipher.decrypt(encrypted_creds).decode()
-    return Credentials.from_authorized_user_info(json.loads(decrypted_creds))
+    credentials = Credentials.from_authorized_user_info(json.loads(decrypted_creds))
+    
+    # Check if stored credentials have all required scopes
+    if credentials and credentials.valid:
+        if not all(scope in credentials.scopes for scope in SCOPES):
+            print(f"Scope mismatch for user {user_id}: Stored scopes do not include all required scopes.")
+            print(f"Stored: {credentials.scopes}")
+            print(f"Required: {SCOPES}")
+            # Force reauthorization by invalidating credentials
+            if os.path.exists(token_path):
+                os.remove(token_path)
+            return None
+            
+    return credentials
 
 def require_auth(view):
     """Decorator to require authentication for routes."""
