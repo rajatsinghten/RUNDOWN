@@ -35,7 +35,7 @@ def get_flow():
             return Flow.from_client_config(
                 credentials_dict,
                 scopes=SCOPES,
-                redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'http://127.0.0.1:5000/oauth/callback')
+                redirect_uri=os.environ.get('OAUTH_REDIRECT_URI', 'https://rundown-sx8n.onrender.com/oauth/callback/')
             )
         except json.JSONDecodeError as e:
             print(f"Error parsing credentials from environment: {e}")
