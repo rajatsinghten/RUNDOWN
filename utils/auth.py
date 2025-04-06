@@ -27,7 +27,7 @@ def get_flow():
     return Flow.from_client_secrets_file(
         'credentials.json',
         scopes=SCOPES,
-        redirect_uri='http://127.0.0.1:5000/oauth/callback'
+        redirect_uri='https://rundown-sx8n.onrender.com/oauth/callback/'
     )
 
 def save_credentials(user_id, credentials):

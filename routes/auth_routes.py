@@ -3,6 +3,7 @@ from googleapiclient.discovery import build
 from config import SECRET_KEY
 from utils.auth import get_flow, save_credentials
 import traceback
+from oauthlib.oauth2.rfc6749.errors import InvalidScopeError
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -37,7 +38,15 @@ def callback():
             return 'State mismatch', 400
             
         flow = get_flow()
-        flow.fetch_token(authorization_response=request.url)
+        try:
+            flow.fetch_token(authorization_response=request.url)
+        except InvalidScopeError as scope_error:
+            # Log the scope error but continue the authentication process
+            print(f"Scope warning (proceeding anyway): {str(scope_error)}")
+        except Exception as token_error:
+            print(f"Token fetch error: {str(token_error)}")
+            return render_template('error.html', error=str(token_error))
+            
         creds = flow.credentials
         
         # Get user information

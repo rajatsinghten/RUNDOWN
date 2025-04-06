@@ -19,3 +19,4 @@ venv/
 
 # Ignore Flask session data
 flask_session/
+node_modules

@@ -14,8 +14,16 @@ import re
 chat_bp = Blueprint('chat', __name__)
 
 # Configure the Generative AI model
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+try:
+    if not GOOGLE_API_KEY:
+        raise ValueError("GOOGLE_API_KEY is not set in environment variables")
+    genai.configure(api_key=GOOGLE_API_KEY)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    print("Successfully initialized Gemini AI model")
+except Exception as ai_init_error:
+    print(f"Error initializing Gemini AI model: {str(ai_init_error)}")
+    print(traceback.format_exc())
+    model = None
 
 def require_auth(view):
     def wrapper(*args, **kwargs):
@@ -153,6 +161,10 @@ def add_event_command(command_content, creds):
     """
     
     try:
+        # Check if model is available
+        if model is None:
+            raise ValueError("AI model not initialized or unavailable")
+            
         response = model.generate_content(prompt)
         response_text = response.text.strip()
         current_app.logger.info(f"AI response for date extraction: {response_text}")
@@ -445,14 +457,35 @@ def add_suggestion():
         time_period = int(data.get('time_period', 7))
         
         creds = load_credentials(user_id)
+        if not creds:
+            current_app.logger.error("No valid credentials found for user")
+            return jsonify({"error": "Authentication error", "redirect": "/login"}), 401
+            
         # Pass the time period to fetch_emails
-        emails = fetch_emails(user_id, days=time_period)
+        try:
+            emails = fetch_emails(user_id, days=time_period)
+            if emails is None:
+                current_app.logger.error("Failed to fetch emails - credentials may be invalid")
+                return jsonify({"error": "Failed to fetch emails", "redirect": "/login"}), 401
+        except Exception as email_fetch_error:
+            current_app.logger.error(f"Error fetching emails: {str(email_fetch_error)}")
+            current_app.logger.error(traceback.format_exc())
+            return jsonify({"error": "Failed to fetch emails", "suggestions": []}), 500
         
         # Fetch existing calendar events to check for duplicates
-        calendar_events = fetch_calendar_events(creds)
-        existing_event_titles = [event.get('summary', '').lower() for event in calendar_events]
-        existing_subjects = {}
-        existing_email_ids = set()
+        try:
+            calendar_events = fetch_calendar_events(creds)
+            existing_event_titles = [event.get('summary', '').lower() for event in calendar_events]
+            existing_subjects = {}
+            existing_email_ids = set()
+        except Exception as calendar_error:
+            current_app.logger.error(f"Error fetching calendar events: {str(calendar_error)}")
+            current_app.logger.error(traceback.format_exc())
+            # Continue with empty lists if calendar fetch fails
+            calendar_events = []
+            existing_event_titles = []
+            existing_subjects = {}
+            existing_email_ids = set()
         
         # Build a map of subjects that already have events to avoid duplicates
         for event in calendar_events:
@@ -539,74 +572,89 @@ def add_suggestion():
             }}
             """
             
-            response = model.generate_content(prompt)
-            
-            if response and response.text.strip():
-                try:
-                    # Extract JSON from response
-                    response_text = response.text.strip()
-                    if "```json" in response_text:
-                        json_str = response_text.split("```json")[1].split("```")[0].strip()
-                    elif "```" in response_text:
-                        json_str = response_text.split("```")[1].strip()
-                    else:
-                        json_str = response_text
+            try:
+                # Check if model is available
+                if model is None:
+                    raise ValueError("AI model not initialized or unavailable")
                     
-                    suggestion_data = json.loads(json_str)
-                    
-                    # Prepare formatted response
-                    task_text = suggestion_data.get('task', '')
-                    
-                    # Skip if the task is "FYI" or doesn't seem like an actionable task
-                    if task_text.startswith("FYI:") or not task_text:
-                        current_app.logger.info(f"Skipping non-actionable task: {task_text}")
-                        continue
+                response = model.generate_content(prompt)
+                
+                if response and response.text.strip():
+                    try:
+                        # Extract JSON from response
+                        response_text = response.text.strip()
+                        if "```json" in response_text:
+                            json_str = response_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in response_text:
+                            json_str = response_text.split("```")[1].strip()
+                        else:
+                            json_str = response_text
                         
-                    # Skip if the task exactly matches an existing event title
-                    if any(task_text.lower() == title for title in existing_event_titles):
-                        current_app.logger.info(f"Skipping task already in calendar: {task_text}")
-                        continue
-                    
-                    # Get the event date - look for event_date first (new format) then deadline (old format)
-                    event_date = suggestion_data.get('event_date', suggestion_data.get('deadline', 'none'))
-                    location = suggestion_data.get('location', 'none')
-                    
-                    formatted_deadline = None
-                    if event_date and event_date.lower() != 'none':
-                        try:
-                            # First try strict format
-                            dt = datetime.strptime(event_date, "%Y-%m-%d %H:%M")
-                            formatted_deadline = dt.strftime("%b %d, %Y at %I:%M %p")
-                        except ValueError:
+                        suggestion_data = json.loads(json_str)
+                        
+                        # Prepare formatted response
+                        task_text = suggestion_data.get('task', '')
+                        
+                        # Skip if the task is "FYI" or doesn't seem like an actionable task
+                        if task_text.startswith("FYI:") or not task_text:
+                            current_app.logger.info(f"Skipping non-actionable task: {task_text}")
+                            continue
+                            
+                        # Skip if the task exactly matches an existing event title
+                        if any(task_text.lower() == title for title in existing_event_titles):
+                            current_app.logger.info(f"Skipping task already in calendar: {task_text}")
+                            continue
+                        
+                        # Get the event date - look for event_date first (new format) then deadline (old format)
+                        event_date = suggestion_data.get('event_date', suggestion_data.get('deadline', 'none'))
+                        location = suggestion_data.get('location', 'none')
+                        
+                        formatted_deadline = None
+                        if event_date and event_date.lower() != 'none':
                             try:
-                                # Try with dateutil parser as fallback
-                                from dateutil import parser
-                                dt = parser.parse(event_date)
+                                # First try strict format
+                                dt = datetime.strptime(event_date, "%Y-%m-%d %H:%M")
                                 formatted_deadline = dt.strftime("%b %d, %Y at %I:%M %p")
-                            except:
-                                # Just use as is if parsing fails
-                                formatted_deadline = event_date
-                    
-                    # Add to suggestions
-                    suggestions.append({
-                        "text": task_text,
-                        "deadline": formatted_deadline,
-                        "email_id": email_id,
-                        "email_subject": email_subject,
-                        "location": location if location and location.lower() != 'none' else None,
-                        "event_date": event_date if event_date and event_date.lower() != 'none' else None,
-                        "is_time_sensitive": suggestion_data.get('is_time_sensitive', False)
-                    })
-                    
-                except Exception as json_error:
-                    # Fallback if JSON parsing fails
-                    current_app.logger.error(f"Error parsing AI response: {json_error}")
-                    current_app.logger.error(traceback.format_exc())
-                    suggestions.append({
-                        "text": response.text.strip(),
-                        "email_id": email_id,
-                        "email_subject": email_subject
-                    })
+                            except ValueError:
+                                try:
+                                    # Try with dateutil parser as fallback
+                                    from dateutil import parser
+                                    dt = parser.parse(event_date)
+                                    formatted_deadline = dt.strftime("%b %d, %Y at %I:%M %p")
+                                except:
+                                    # Just use as is if parsing fails
+                                    formatted_deadline = event_date
+                        
+                        # Add to suggestions
+                        suggestions.append({
+                            "text": task_text,
+                            "deadline": formatted_deadline,
+                            "email_id": email_id,
+                            "email_subject": email_subject,
+                            "location": location if location and location.lower() != 'none' else None,
+                            "event_date": event_date if event_date and event_date.lower() != 'none' else None,
+                            "is_time_sensitive": suggestion_data.get('is_time_sensitive', False)
+                        })
+                        
+                    except Exception as json_error:
+                        # Fallback if JSON parsing fails
+                        current_app.logger.error(f"Error parsing AI response: {json_error}")
+                        current_app.logger.error(traceback.format_exc())
+                        suggestions.append({
+                            "text": response.text.strip(),
+                            "email_id": email_id,
+                            "email_subject": email_subject
+                        })
+            except Exception as model_error:
+                current_app.logger.error(f"Error generating content with AI model: {model_error}")
+                current_app.logger.error(traceback.format_exc())
+                # Add a basic suggestion without AI processing
+                suggestions.append({
+                    "text": f"Review email: {email_subject}",
+                    "email_id": email_id,
+                    "email_subject": email_subject,
+                    "is_time_sensitive": False
+                })
         
         # Sort suggestions by time sensitivity
         suggestions.sort(key=lambda x: x.get('is_time_sensitive', False), reverse=True)
@@ -616,7 +664,8 @@ def add_suggestion():
     except Exception as e:
         current_app.logger.error(f"Add suggestion error: {str(e)}")
         current_app.logger.error(traceback.format_exc())
-        return jsonify({"error": "Internal server error"}), 500
+        # Return an empty suggestions list rather than failing completely
+        return jsonify({"error": f"Error processing suggestions: {str(e)}", "suggestions": []}), 500
 
 @chat_bp.route('/addtask', methods=['POST'])
 @require_auth
